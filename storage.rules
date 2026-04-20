@@ -1,0 +1,38 @@
+rules_version = '2';
+
+// Vibzcheck Cloud Storage security rules.
+//
+// Phase 1 only persists user avatars; later phases add cached album art.
+// Avatars live at `users/{uid}/avatar.<ext>` so the path itself encodes
+// ownership.
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isSelf(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    function isImageUnder5MB() {
+      return request.resource.size < 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+
+    // ---------------- users/{uid}/** (avatars) ----------------
+    match /users/{uid}/{allPaths=**} {
+      // Any signed-in user can render avatars (e.g. in queue/chat headers).
+      allow read: if isSignedIn();
+      allow write: if isSelf(uid) && isImageUnder5MB();
+    }
+
+    // ---------------- sessions/{sessionId}/** (cached art) ----------------
+    // Album art / cover images are written by Cloud Functions only.
+    match /sessions/{sessionId}/{allPaths=**} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+  }
+}
