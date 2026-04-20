@@ -1,0 +1,5 @@
+# Project-local generated and planning artifacts
+docs/
+
+# Cursor IDE
+.cursor/
