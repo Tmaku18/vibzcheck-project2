@@ -1,0 +1,98 @@
+rules_version = '2';
+
+// Vibzcheck Firestore security rules.
+//
+// Design intent:
+//   * Every read/write requires authentication.
+//   * Users can only read/write their own user profile document.
+//   * Sessions are owned by one user (the host) but readable by any signed-in
+//     user who has been added to the members subcollection.
+//   * Queue tracks, messages, and votes can only be written by current
+//     session members.
+//   * Recommendation/fairness "suggestions" are written exclusively by
+//     Cloud Functions (Admin SDK bypasses these rules), so client writes
+//     are blocked by default.
+//
+// Phases 2-4 will add finer per-field validation; this baseline enforces
+// authentication and ownership immediately so unsigned reads/writes fail
+// during the very first build.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isSelf(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    function isSessionOwner(sessionId) {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/sessions/$(sessionId))
+        && get(/databases/$(database)/documents/sessions/$(sessionId)).data.ownerId == request.auth.uid;
+    }
+
+    function isSessionMember(sessionId) {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/sessions/$(sessionId)/members/$(request.auth.uid));
+    }
+
+    // ---------------- users/{uid} ----------------
+    match /users/{uid} {
+      allow read: if isSelf(uid);
+      allow create: if isSelf(uid);
+      allow update: if isSelf(uid);
+      // Profiles are never deleted from the client; admins handle GDPR removal.
+      allow delete: if false;
+    }
+
+    // ---------------- sessions/{sessionId} ----------------
+    match /sessions/{sessionId} {
+      allow read: if isSessionMember(sessionId) || isSessionOwner(sessionId);
+      allow create: if isSignedIn()
+        && request.resource.data.ownerId == request.auth.uid;
+      allow update: if isSessionOwner(sessionId);
+      allow delete: if isSessionOwner(sessionId);
+
+      // ---------------- members/{uid} ----------------
+      match /members/{memberUid} {
+        allow read: if isSessionMember(sessionId) || isSessionOwner(sessionId);
+        // Joining a session writes a member doc under your own uid.
+        allow create: if isSelf(memberUid);
+        // Members can update their own presence/lastVoteAt.
+        allow update: if isSelf(memberUid);
+        // Owner can remove a member; members can leave themselves.
+        allow delete: if isSelf(memberUid) || isSessionOwner(sessionId);
+      }
+
+      // ---------------- queue/{trackId} ----------------
+      match /queue/{trackId} {
+        allow read: if isSessionMember(sessionId);
+        allow create: if isSessionMember(sessionId)
+          && request.resource.data.addedBy == request.auth.uid;
+        // Vote/score updates run inside Firestore transactions client-side.
+        allow update: if isSessionMember(sessionId);
+        allow delete: if isSessionOwner(sessionId);
+      }
+
+      // ---------------- messages/{messageId} ----------------
+      match /messages/{messageId} {
+        allow read: if isSessionMember(sessionId);
+        allow create: if isSessionMember(sessionId)
+          && request.resource.data.senderId == request.auth.uid;
+        // Chat is append-only from the client.
+        allow update: if false;
+        allow delete: if isSessionOwner(sessionId);
+      }
+
+      // ---------------- suggestions/{snapshotId} ----------------
+      // Snapshots are produced by the Cloud Functions recommendation/fairness
+      // pipelines. Clients read them but never write directly.
+      match /suggestions/{snapshotId} {
+        allow read: if isSessionMember(sessionId);
+        allow write: if false;
+      }
+    }
+  }
+}
