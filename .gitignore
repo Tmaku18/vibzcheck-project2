@@ -57,14 +57,15 @@ app.*.map.json
 **/android/**/gradle-wrapper.jar
 
 # Firebase / FlutterFire local config
+# Note: google-services.json and GoogleService-Info.plist are intentionally
+# committed. Firebase API keys are not secrets; access is controlled by
+# Firestore/Storage security rules and Authentication.
 .firebase/
 firebase-debug.log
 firestore-debug.log
 ui-debug.log
 firebase-debug.*.log
 firestore-debug.*.log
-google-services.json
-GoogleService-Info.plist
 
 # Cloud Functions
 functions/node_modules/
