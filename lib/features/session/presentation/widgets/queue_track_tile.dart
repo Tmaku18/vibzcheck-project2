@@ -99,6 +99,17 @@ class QueueTrackTile extends StatelessWidget {
                       color: theme.colorScheme.onSurfaceVariant,
                     ),
                   ),
+                  if (track.moodTags.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 4,
+                      runSpacing: 4,
+                      children: [
+                        for (final tag in track.moodTags.take(3))
+                          _MoodChip(label: tag),
+                      ],
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -149,6 +160,31 @@ class _ArtworkFallback extends StatelessWidget {
       color: color,
       alignment: Alignment.center,
       child: const Icon(Icons.music_note),
+    );
+  }
+}
+
+class _MoodChip extends StatelessWidget {
+  const _MoodChip({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.secondaryContainer,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        '#$label',
+        style: theme.textTheme.labelSmall?.copyWith(
+          color: theme.colorScheme.onSecondaryContainer,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
     );
   }
 }
