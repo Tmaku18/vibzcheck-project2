@@ -6,6 +6,8 @@ import 'package:go_router/go_router.dart';
 import '../../../core/firebase/firebase_providers.dart';
 import '../../../core/widgets/error_screen.dart';
 import '../../../core/widgets/loading_screen.dart';
+import '../../recommendations/application/recommendation_providers.dart';
+import '../../recommendations/presentation/suggestions_card.dart';
 import '../application/mood_summary.dart';
 import '../application/session_controller.dart';
 import '../application/session_providers.dart';
@@ -150,6 +152,8 @@ class _SessionView extends ConsumerWidget {
               loading: () => const SizedBox(height: 36),
               error: (_, _) => const SizedBox.shrink(),
             ),
+            const SizedBox(height: 16),
+            SuggestionsCard(sessionId: session.id),
             const SizedBox(height: 20),
             Row(
               children: [
@@ -166,6 +170,8 @@ class _SessionView extends ConsumerWidget {
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
                 ),
+                const Spacer(),
+                _FairRankingToggle(sessionId: session.id),
               ],
             ),
             const SizedBox(height: 8),
@@ -181,38 +187,63 @@ class _SessionView extends ConsumerWidget {
               ),
               data: (tracks) {
                 if (tracks.isEmpty) return const _EmptyQueue();
+                final fairEnabled =
+                    ref.watch(fairRankingEnabledProvider(session.id));
+                final orderedTracks = fairEnabled
+                    ? ref
+                        .watch(fairRankedQueueProvider(session.id))
+                        .map((r) => r.track)
+                        .toList()
+                    : tracks;
+                final rankedInfo = fairEnabled
+                    ? {
+                        for (final r in ref
+                            .watch(fairRankedQueueProvider(session.id)))
+                          r.track.id: r,
+                      }
+                    : const <String, Object?>{};
                 return Column(
                   children: [
-                    for (var i = 0; i < tracks.length; i++)
+                    for (var i = 0; i < orderedTracks.length; i++)
                       Padding(
                         padding: const EdgeInsets.only(bottom: 8),
-                        child: QueueTrackTile(
-                          track: tracks[i],
-                          currentUserId: currentUid,
-                          rank: i + 1,
-                          onUpvote: () => ref
-                              .read(sessionControllerProvider)
-                              .castVote(
-                                sessionId: session.id,
-                                trackDocId: tracks[i].id,
-                                direction: 1,
-                              ),
-                          onDownvote: () => ref
-                              .read(sessionControllerProvider)
-                              .castVote(
-                                sessionId: session.id,
-                                trackDocId: tracks[i].id,
-                                direction: -1,
-                              ),
-                          onRemove: (isOwner ||
-                                  tracks[i].addedBy == currentUid)
-                              ? () => ref
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            QueueTrackTile(
+                              track: orderedTracks[i],
+                              currentUserId: currentUid,
+                              rank: i + 1,
+                              onUpvote: () => ref
                                   .read(sessionControllerProvider)
-                                  .removeTrack(
+                                  .castVote(
                                     sessionId: session.id,
-                                    trackDocId: tracks[i].id,
-                                  )
-                              : null,
+                                    trackDocId: orderedTracks[i].id,
+                                    direction: 1,
+                                  ),
+                              onDownvote: () => ref
+                                  .read(sessionControllerProvider)
+                                  .castVote(
+                                    sessionId: session.id,
+                                    trackDocId: orderedTracks[i].id,
+                                    direction: -1,
+                                  ),
+                              onRemove: (isOwner ||
+                                      orderedTracks[i].addedBy == currentUid)
+                                  ? () => ref
+                                      .read(sessionControllerProvider)
+                                      .removeTrack(
+                                        sessionId: session.id,
+                                        trackDocId: orderedTracks[i].id,
+                                      )
+                                  : null,
+                            ),
+                            if (fairEnabled)
+                              _FairnessExplanation(
+                                rankedInfo: rankedInfo,
+                                trackId: orderedTracks[i].id,
+                              ),
+                          ],
                         ),
                       ),
                   ],
@@ -376,6 +407,120 @@ class _EmptyQueue extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _FairRankingToggle extends ConsumerWidget {
+  const _FairRankingToggle({required this.sessionId});
+  final String sessionId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final enabled = ref.watch(fairRankingEnabledProvider(sessionId));
+    return Tooltip(
+      message: enabled
+          ? 'Showing fairness-ranked order with explanations'
+          : 'Showing raw vote-score order',
+      child: InkWell(
+        borderRadius: BorderRadius.circular(999),
+        onTap: () {
+          final notifier =
+              ref.read(fairRankingEnabledProvider(sessionId).notifier);
+          notifier.state = !notifier.state;
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          decoration: BoxDecoration(
+            color: enabled
+                ? theme.colorScheme.primary.withValues(alpha: 0.12)
+                : theme.colorScheme.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(999),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                enabled ? Icons.balance : Icons.how_to_vote,
+                size: 16,
+                color: enabled
+                    ? theme.colorScheme.primary
+                    : theme.colorScheme.onSurfaceVariant,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                enabled ? 'Fair' : 'Votes',
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: enabled
+                      ? theme.colorScheme.primary
+                      : theme.colorScheme.onSurfaceVariant,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _FairnessExplanation extends StatelessWidget {
+  const _FairnessExplanation({
+    required this.rankedInfo,
+    required this.trackId,
+  });
+
+  final Map<String, Object?> rankedInfo;
+  final String trackId;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final info = rankedInfo[trackId];
+    if (info == null) return const SizedBox.shrink();
+    // Dynamic access to avoid another import; info is RankedTrack.
+    final dyn = info as dynamic;
+    final factors = (dyn.factors as List).cast<dynamic>();
+    final score = (dyn.score as double);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
+      child: Wrap(
+        spacing: 6,
+        runSpacing: 4,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.primary.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: Text(
+              'Fair score ${score.toStringAsFixed(2)}',
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: theme.colorScheme.primary,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          for (final f in factors)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Text(
+                '${f.label} ${(f.weight as double) >= 0 ? '+' : ''}'
+                '${(f.weight as double).toStringAsFixed(2)}',
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
