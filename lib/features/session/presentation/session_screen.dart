@@ -6,8 +6,10 @@ import 'package:go_router/go_router.dart';
 import '../../../core/firebase/firebase_providers.dart';
 import '../../../core/widgets/error_screen.dart';
 import '../../../core/widgets/loading_screen.dart';
+import '../application/mood_summary.dart';
 import '../application/session_controller.dart';
 import '../application/session_providers.dart';
+import '../domain/queue_track.dart';
 import '../domain/session.dart';
 import 'widgets/queue_track_tile.dart';
 
@@ -135,7 +137,10 @@ class _SessionView extends ConsumerWidget {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 96),
           children: [
-            _SessionHeaderCard(session: session),
+            _SessionHeaderCard(
+              session: session,
+              mood: computeMoodSummary(queueAsync.value ?? const <QueueTrack>[]),
+            ),
             const SizedBox(height: 16),
             membersAsync.when(
               data: (members) => _MembersStrip(
@@ -222,8 +227,9 @@ class _SessionView extends ConsumerWidget {
 }
 
 class _SessionHeaderCard extends StatelessWidget {
-  const _SessionHeaderCard({required this.session});
+  const _SessionHeaderCard({required this.session, required this.mood});
   final Session session;
+  final MoodSummary? mood;
 
   @override
   Widget build(BuildContext context) {
@@ -231,46 +237,72 @@ class _SessionHeaderCard extends StatelessWidget {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Hosted by ${session.ownerName}',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Hosted by ${session.ownerName}',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Join code',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                      Text(
+                        session.code,
+                        style: theme.textTheme.headlineMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 4,
+                          color: theme.colorScheme.primary,
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Join code',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                  Text(
-                    session.code,
-                    style: theme.textTheme.headlineMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 4,
-                      color: theme.colorScheme.primary,
-                    ),
-                  ),
-                ],
-              ),
+                ),
+                IconButton.filledTonal(
+                  tooltip: 'Copy code',
+                  onPressed: () async {
+                    await Clipboard.setData(ClipboardData(text: session.code));
+                    if (!context.mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Code copied')),
+                    );
+                  },
+                  icon: const Icon(Icons.copy),
+                ),
+              ],
             ),
-            IconButton.filledTonal(
-              tooltip: 'Copy code',
-              onPressed: () async {
-                await Clipboard.setData(ClipboardData(text: session.code));
-                if (!context.mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Code copied')),
-                );
-              },
-              icon: const Icon(Icons.copy),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Icon(
+                  Icons.auto_awesome,
+                  size: 18,
+                  color: theme.colorScheme.secondary,
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    mood == null
+                        ? 'Mood: set the vibe with your first upvoted track'
+                        : 'Mood: #${mood!.top}',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ],
         ),
