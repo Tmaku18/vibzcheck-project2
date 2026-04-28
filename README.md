@@ -61,9 +61,20 @@ lib/
       session/
         domain/                         # Session, SessionMember, Track, QueueTrack
         data/                           # session, queue, track_search repositories
-        application/                    # session_controller + stream providers
+        application/                    # session_controller, stream providers, mood_summary
         presentation/                   # home, create, join, session, add-track screens
         presentation/widgets/           # SessionCard, QueueTrackTile
+      chat/
+        domain/message.dart
+        data/chat_repository.dart
+        application/chat_providers.dart
+        presentation/chat_screen.dart
+      recommendations/
+        domain/suggestion.dart
+        application/                    # track_recommender, fairness_ranker, providers
+        presentation/suggestions_card.dart
+      notifications/
+        fcm_service.dart                # FCM permission, token sync, foreground snackbars
 firestore.rules                    # auth-required, owner/member checks
 firestore.indexes.json             # composite indexes for queue/chat/sessions
 storage.rules                      # avatars: owner-only writes <5MB images
@@ -139,10 +150,14 @@ Both are currently green; CI/manual evidence is captured each commit.
       profile bootstrap, Firestore/Storage rules baseline, indexes, theme,
       router.
 - [x] **Phase 2 — Core collaboration:** Session create/join via 6-char code,
-      shared queue with transaction-backed voting, mock track search (Spotify
-      Cloud Function bridge lands in Phase 3), unit tests for vote logic.
-- [ ] **Phase 3 — Advanced features:** Chat, mood tagging, FCM, rule-based
-      AI helper, fairness ranking (graduate challenge), real Spotify bridge.
+      shared queue with transaction-backed voting, mock track search,
+      unit tests for vote logic.
+- [x] **Phase 3 — Advanced features:** Live chat with system-event styling,
+      mood tag chips + filter, session mood summary, avatar upload via
+      Firebase Storage, FCM permission + token sync, rule-based next-3-song
+      helper with explainable factors, graduate-level fairness-ranking
+      module with per-track explanations. Real Spotify bridge still pending
+      Blaze upgrade + creds.
 - [ ] **Phase 4 — Submission:** Tests, screenshots, APK, slides, demo video,
       curated questions coverage.
 
