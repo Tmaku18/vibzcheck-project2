@@ -8,7 +8,11 @@ import '../core/firebase/firebase_providers.dart';
 import '../core/widgets/error_screen.dart';
 import '../features/auth/presentation/sign_in_screen.dart';
 import '../features/auth/presentation/sign_up_screen.dart';
+import '../features/session/presentation/add_track_screen.dart';
+import '../features/session/presentation/create_session_screen.dart';
 import '../features/session/presentation/home_screen.dart';
+import '../features/session/presentation/join_session_screen.dart';
+import '../features/session/presentation/session_screen.dart';
 
 /// Adapter that lets `go_router` rebuild its redirect logic whenever the
 /// underlying Riverpod auth-state stream emits a new value.
@@ -62,6 +66,32 @@ final goRouterProvider = Provider<GoRouter>((ref) {
         path: '/sign-up',
         name: 'sign-up',
         builder: (context, state) => const SignUpScreen(),
+      ),
+      GoRoute(
+        path: '/create-session',
+        name: 'create-session',
+        builder: (context, state) => const CreateSessionScreen(),
+      ),
+      GoRoute(
+        path: '/join-session',
+        name: 'join-session',
+        builder: (context, state) => const JoinSessionScreen(),
+      ),
+      GoRoute(
+        path: '/session/:sessionId',
+        name: 'session',
+        builder: (context, state) => SessionScreen(
+          sessionId: state.pathParameters['sessionId']!,
+        ),
+        routes: [
+          GoRoute(
+            path: 'add-track',
+            name: 'add-track',
+            builder: (context, state) => AddTrackScreen(
+              sessionId: state.pathParameters['sessionId']!,
+            ),
+          ),
+        ],
       ),
     ],
     errorBuilder: (context, state) => ErrorScreen(error: state.error ?? ''),
