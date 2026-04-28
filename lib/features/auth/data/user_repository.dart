@@ -45,6 +45,34 @@ class UserRepository {
           SetOptions(merge: true),
         );
   }
+
+  /// Adds [token] to the user's `fcmTokens` array if it isn't already there.
+  /// Uses `arrayUnion` so multi-device sign-ins don't clobber each other.
+  Future<void> addFcmToken({
+    required String uid,
+    required String token,
+  }) async {
+    await _users.doc(uid).set(
+      {
+        'fcmTokens': FieldValue.arrayUnion([token]),
+        'updatedAt': FieldValue.serverTimestamp(),
+      },
+      SetOptions(merge: true),
+    );
+  }
+
+  Future<void> removeFcmToken({
+    required String uid,
+    required String token,
+  }) async {
+    await _users.doc(uid).set(
+      {
+        'fcmTokens': FieldValue.arrayRemove([token]),
+        'updatedAt': FieldValue.serverTimestamp(),
+      },
+      SetOptions(merge: true),
+    );
+  }
 }
 
 final userRepositoryProvider = Provider<UserRepository>((ref) {
