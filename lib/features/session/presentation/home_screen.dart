@@ -26,6 +26,11 @@ class HomeScreen extends ConsumerWidget {
         title: const Text('Vibzcheck'),
         actions: [
           IconButton(
+            tooltip: 'Profile',
+            icon: const Icon(Icons.account_circle_outlined),
+            onPressed: () => context.push('/profile'),
+          ),
+          IconButton(
             tooltip: 'Sign out',
             icon: const Icon(Icons.logout),
             onPressed: () => ref.read(authControllerProvider).signOut(),
