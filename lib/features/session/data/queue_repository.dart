@@ -109,24 +109,25 @@ class QueueRepository {
       final previous = votes[uid] ?? 0;
 
       int effective;
+      final updates = <String, dynamic>{};
       if (direction == 0 || direction == previous) {
         votes.remove(uid);
         effective = 0;
+        // Dotted path with FieldValue.delete() atomically removes a single
+        // key from the votes map instead of rewriting the whole map (which
+        // is what would happen if we set `votes: newMap`).
+        updates['votes.$uid'] = FieldValue.delete();
       } else {
         votes[uid] = direction;
         effective = direction;
+        updates['votes.$uid'] = direction;
       }
 
-      final score = votes.values.fold<int>(0, (a, b) => a + b);
-      final up = votes.values.where((v) => v > 0).length;
-      final down = votes.values.where((v) => v < 0).length;
+      updates['voteScore'] = votes.values.fold<int>(0, (a, b) => a + b);
+      updates['upvotes'] = votes.values.where((v) => v > 0).length;
+      updates['downvotes'] = votes.values.where((v) => v < 0).length;
 
-      tx.update(ref, {
-        'votes': votes,
-        'voteScore': score,
-        'upvotes': up,
-        'downvotes': down,
-      });
+      tx.update(ref, updates);
       return effective;
     });
   }
