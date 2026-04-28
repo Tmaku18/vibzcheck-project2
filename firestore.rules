@@ -2,20 +2,18 @@ rules_version = '2';
 
 // Vibzcheck Firestore security rules.
 //
-// Design intent:
-//   * Every read/write requires authentication.
-//   * Users can only read/write their own user profile document.
-//   * Sessions are owned by one user (the host) but readable by any signed-in
-//     user who has been added to the members subcollection.
-//   * Queue tracks, messages, and votes can only be written by current
-//     session members.
-//   * Recommendation/fairness "suggestions" are written exclusively by
-//     Cloud Functions (Admin SDK bypasses these rules), so client writes
-//     are blocked by default.
-//
-// Phases 2-4 will add finer per-field validation; this baseline enforces
-// authentication and ownership immediately so unsigned reads/writes fail
-// during the very first build.
+// Access model:
+//   * All reads/writes require a signed-in Firebase Auth user.
+//   * A session's root document stores `ownerId` and `memberIds: [uid, ...]`,
+//     which are what every subcollection rule uses to decide access. Keeping
+//     this on the root doc means a single `get()` per request instead of an
+//     `exists()` roundtrip into the `members` subcollection.
+//   * Session creation is self-authored: the owner's uid must appear in
+//     both `ownerId` and the initial `memberIds` array.
+//   * Queue vote updates happen inside a client-side Firestore transaction
+//     (see `QueueRepository.castVote`). These rules only enforce that the
+//     caller is already a session member; per-field vote validation lands
+//     in Phase 4 hardening.
 service cloud.firestore {
   match /databases/{database}/documents {
 
@@ -27,42 +25,53 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == uid;
     }
 
+    function sessionData(sessionId) {
+      return get(/databases/$(database)/documents/sessions/$(sessionId)).data;
+    }
+
     function isSessionOwner(sessionId) {
-      return isSignedIn()
-        && exists(/databases/$(database)/documents/sessions/$(sessionId))
-        && get(/databases/$(database)/documents/sessions/$(sessionId)).data.ownerId == request.auth.uid;
+      return isSignedIn() && sessionData(sessionId).ownerId == request.auth.uid;
     }
 
     function isSessionMember(sessionId) {
       return isSignedIn()
-        && exists(/databases/$(database)/documents/sessions/$(sessionId)/members/$(request.auth.uid));
+        && request.auth.uid in sessionData(sessionId).memberIds;
     }
 
     // ---------------- users/{uid} ----------------
     match /users/{uid} {
-      allow read: if isSelf(uid);
+      allow read:   if isSelf(uid);
       allow create: if isSelf(uid);
       allow update: if isSelf(uid);
-      // Profiles are never deleted from the client; admins handle GDPR removal.
       allow delete: if false;
     }
 
     // ---------------- sessions/{sessionId} ----------------
     match /sessions/{sessionId} {
-      allow read: if isSessionMember(sessionId) || isSessionOwner(sessionId);
+      // Members and owner can read the root session doc.
+      allow read: if isSignedIn()
+        && (request.auth.uid in resource.data.memberIds
+            || resource.data.ownerId == request.auth.uid);
+
+      // On create, caller must be the owner *and* include themselves in
+      // memberIds so the initial member list is never empty or forged.
       allow create: if isSignedIn()
-        && request.resource.data.ownerId == request.auth.uid;
-      allow update: if isSessionOwner(sessionId);
+        && request.resource.data.ownerId == request.auth.uid
+        && request.auth.uid in request.resource.data.memberIds;
+
+      // Any member can update the session doc (to add themselves on join,
+      // update currentTrackId, etc.). Owner-only ops run as owner.
+      allow update: if isSignedIn()
+        && (request.auth.uid in resource.data.memberIds
+            || resource.data.ownerId == request.auth.uid);
+
       allow delete: if isSessionOwner(sessionId);
 
       // ---------------- members/{uid} ----------------
       match /members/{memberUid} {
         allow read: if isSessionMember(sessionId) || isSessionOwner(sessionId);
-        // Joining a session writes a member doc under your own uid.
         allow create: if isSelf(memberUid);
-        // Members can update their own presence/lastVoteAt.
         allow update: if isSelf(memberUid);
-        // Owner can remove a member; members can leave themselves.
         allow delete: if isSelf(memberUid) || isSessionOwner(sessionId);
       }
 
@@ -71,9 +80,10 @@ service cloud.firestore {
         allow read: if isSessionMember(sessionId);
         allow create: if isSessionMember(sessionId)
           && request.resource.data.addedBy == request.auth.uid;
-        // Vote/score updates run inside Firestore transactions client-side.
         allow update: if isSessionMember(sessionId);
-        allow delete: if isSessionOwner(sessionId);
+        allow delete: if isSessionOwner(sessionId)
+          || (isSessionMember(sessionId)
+              && resource.data.addedBy == request.auth.uid);
       }
 
       // ---------------- messages/{messageId} ----------------
@@ -81,14 +91,12 @@ service cloud.firestore {
         allow read: if isSessionMember(sessionId);
         allow create: if isSessionMember(sessionId)
           && request.resource.data.senderId == request.auth.uid;
-        // Chat is append-only from the client.
         allow update: if false;
         allow delete: if isSessionOwner(sessionId);
       }
 
       // ---------------- suggestions/{snapshotId} ----------------
-      // Snapshots are produced by the Cloud Functions recommendation/fairness
-      // pipelines. Clients read them but never write directly.
+      // Written exclusively by Cloud Functions (Admin SDK bypasses rules).
       match /suggestions/{snapshotId} {
         allow read: if isSessionMember(sessionId);
         allow write: if false;
