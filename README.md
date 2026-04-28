@@ -50,16 +50,20 @@ lib/
     firebase/firebase_providers.dart
     widgets/loading_screen.dart
     widgets/error_screen.dart
-  features/
-    auth/
-      domain/app_user.dart
-      data/auth_repository.dart
-      data/user_repository.dart
-      application/auth_controller.dart
-      presentation/sign_in_screen.dart
-      presentation/sign_up_screen.dart
-    session/
-      presentation/home_screen.dart   # Phase 1 placeholder
+    features/
+      auth/
+        domain/app_user.dart
+        data/auth_repository.dart
+        data/user_repository.dart
+        application/auth_controller.dart
+        presentation/sign_in_screen.dart
+        presentation/sign_up_screen.dart
+      session/
+        domain/                         # Session, SessionMember, Track, QueueTrack
+        data/                           # session, queue, track_search repositories
+        application/                    # session_controller + stream providers
+        presentation/                   # home, create, join, session, add-track screens
+        presentation/widgets/           # SessionCard, QueueTrackTile
 firestore.rules                    # auth-required, owner/member checks
 firestore.indexes.json             # composite indexes for queue/chat/sessions
 storage.rules                      # avatars: owner-only writes <5MB images
@@ -134,10 +138,11 @@ Both are currently green; CI/manual evidence is captured each commit.
 - [x] **Phase 1 — Foundation:** Flutter scaffold, Firebase wiring, Auth flow,
       profile bootstrap, Firestore/Storage rules baseline, indexes, theme,
       router.
-- [ ] **Phase 2 — Core collaboration:** Session create/join, Spotify import
-      via Cloud Functions, shared queue, transaction-backed voting.
+- [x] **Phase 2 — Core collaboration:** Session create/join via 6-char code,
+      shared queue with transaction-backed voting, mock track search (Spotify
+      Cloud Function bridge lands in Phase 3), unit tests for vote logic.
 - [ ] **Phase 3 — Advanced features:** Chat, mood tagging, FCM, rule-based
-      AI helper, fairness ranking (graduate challenge).
+      AI helper, fairness ranking (graduate challenge), real Spotify bridge.
 - [ ] **Phase 4 — Submission:** Tests, screenshots, APK, slides, demo video,
       curated questions coverage.
 
