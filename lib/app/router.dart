@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 
 import '../core/firebase/firebase_providers.dart';
 import '../core/widgets/error_screen.dart';
+import '../features/auth/presentation/profile_screen.dart';
 import '../features/auth/presentation/sign_in_screen.dart';
 import '../features/auth/presentation/sign_up_screen.dart';
 import '../features/chat/presentation/chat_screen.dart';
@@ -67,6 +68,11 @@ final goRouterProvider = Provider<GoRouter>((ref) {
         path: '/sign-up',
         name: 'sign-up',
         builder: (context, state) => const SignUpScreen(),
+      ),
+      GoRoute(
+        path: '/profile',
+        name: 'profile',
+        builder: (context, state) => const ProfileScreen(),
       ),
       GoRoute(
         path: '/create-session',
