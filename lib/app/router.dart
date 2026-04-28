@@ -8,6 +8,7 @@ import '../core/firebase/firebase_providers.dart';
 import '../core/widgets/error_screen.dart';
 import '../features/auth/presentation/sign_in_screen.dart';
 import '../features/auth/presentation/sign_up_screen.dart';
+import '../features/chat/presentation/chat_screen.dart';
 import '../features/session/presentation/add_track_screen.dart';
 import '../features/session/presentation/create_session_screen.dart';
 import '../features/session/presentation/home_screen.dart';
@@ -88,6 +89,13 @@ final goRouterProvider = Provider<GoRouter>((ref) {
             path: 'add-track',
             name: 'add-track',
             builder: (context, state) => AddTrackScreen(
+              sessionId: state.pathParameters['sessionId']!,
+            ),
+          ),
+          GoRoute(
+            path: 'chat',
+            name: 'session-chat',
+            builder: (context, state) => ChatScreen(
               sessionId: state.pathParameters['sessionId']!,
             ),
           ),
