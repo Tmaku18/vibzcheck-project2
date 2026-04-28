@@ -18,11 +18,29 @@ class AddTrackScreen extends ConsumerStatefulWidget {
 }
 
 class _AddTrackScreenState extends ConsumerState<AddTrackScreen> {
+  static const _moodFilters = <String>[
+    'hype',
+    'chill',
+    'feelgood',
+    'dance',
+    'melancholy',
+    'moody',
+    'synth',
+    'rap',
+  ];
+
   final _searchController = TextEditingController();
   List<Track> _results = const [];
   Timer? _debounce;
   bool _searching = false;
   final Set<String> _addedIds = <String>{};
+  String? _selectedMood;
+
+  Iterable<Track> get _filteredResults {
+    final mood = _selectedMood;
+    if (mood == null) return _results;
+    return _results.where((t) => t.moodTags.contains(mood));
+  }
 
   @override
   void initState() {
@@ -114,31 +132,64 @@ class _AddTrackScreenState extends ConsumerState<AddTrackScreen> {
                 ),
               ),
             ),
+            SizedBox(
+              height: 44,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                itemCount: _moodFilters.length + 1,
+                separatorBuilder: (_, _) => const SizedBox(width: 6),
+                itemBuilder: (_, i) {
+                  if (i == 0) {
+                    return ChoiceChip(
+                      label: const Text('All'),
+                      selected: _selectedMood == null,
+                      onSelected: (_) =>
+                          setState(() => _selectedMood = null),
+                    );
+                  }
+                  final mood = _moodFilters[i - 1];
+                  return ChoiceChip(
+                    label: Text('#$mood'),
+                    selected: _selectedMood == mood,
+                    onSelected: (selected) => setState(
+                      () => _selectedMood = selected ? mood : null,
+                    ),
+                  );
+                },
+              ),
+            ),
             if (_searching)
               const LinearProgressIndicator(minHeight: 2)
             else
               const SizedBox(height: 2),
             Expanded(
-              child: _results.isEmpty
-                  ? Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(24),
-                        child: Text(
-                          'No tracks match "${_searchController.text}".',
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
-                          textAlign: TextAlign.center,
+              child: Builder(builder: (_) {
+                final filtered = _filteredResults.toList();
+                if (filtered.isEmpty) {
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Text(
+                        _selectedMood != null
+                            ? 'No tracks tagged #$_selectedMood match '
+                                '"${_searchController.text}".'
+                            : 'No tracks match "${_searchController.text}".',
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
                         ),
+                        textAlign: TextAlign.center,
                       ),
-                    )
-                  : ListView.separated(
-                      padding:
-                          const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      itemCount: _results.length,
-                      separatorBuilder: (_, _) => const SizedBox(height: 4),
-                      itemBuilder: (_, i) {
-                        final track = _results[i];
+                    ),
+                  );
+                }
+                return ListView.separated(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 12, vertical: 8),
+                  itemCount: filtered.length,
+                  separatorBuilder: (_, _) => const SizedBox(height: 4),
+                  itemBuilder: (_, i) {
+                    final track = filtered[i];
                         final id =
                             '${track.source.asString}_${track.sourceId}';
                         final added = _addedIds.contains(id);
@@ -193,7 +244,8 @@ class _AddTrackScreenState extends ConsumerState<AddTrackScreen> {
                           ),
                         );
                       },
-                    ),
+                    );
+                  }),
             ),
           ],
         ),
