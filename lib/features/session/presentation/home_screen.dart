@@ -1,21 +1,25 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/firebase/firebase_providers.dart';
+import '../../../core/widgets/error_screen.dart';
 import '../../auth/application/auth_controller.dart';
+import '../application/session_providers.dart';
+import 'widgets/session_card.dart';
 
-/// Placeholder home for Phase 1. Phase 2 will replace the body with the
-/// session list, "Start a session" CTA, and "Join via code" entry point.
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
-    final user = ref.watch(authStateChangesProvider).value;
-    final displayName = user?.displayName?.trim().isNotEmpty == true
-        ? user!.displayName!.trim()
-        : (user?.email ?? 'there');
+    final currentUser = ref.watch(authStateChangesProvider).value;
+    final sessionsAsync = ref.watch(mySessionsProvider);
+
+    final displayName = currentUser?.displayName?.trim().isNotEmpty == true
+        ? currentUser!.displayName!.trim()
+        : (currentUser?.email?.split('@').first ?? 'there');
 
     return Scaffold(
       appBar: AppBar(
@@ -29,55 +33,80 @@ class HomeScreen extends ConsumerWidget {
         ],
       ),
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+        child: RefreshIndicator(
+          onRefresh: () async {
+            ref.invalidate(mySessionsProvider);
+            await Future<void>.delayed(const Duration(milliseconds: 350));
+          },
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
             children: [
               Text(
-                'Welcome, $displayName',
+                'Welcome back, $displayName',
                 style: theme.textTheme.headlineSmall?.copyWith(
                   fontWeight: FontWeight.w600,
                 ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 4),
               Text(
-                'Sessions, queue, voting, chat, and the AI helper land in '
-                'Phase 2 of the build.',
-                style: theme.textTheme.bodyMedium,
+                'Start a session or join one your friends are running.',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
               ),
-              const SizedBox(height: 32),
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Phase 1 status',
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      const _StatusRow(
-                        label: 'FlutterFire initialised',
-                        done: true,
-                      ),
-                      const _StatusRow(
-                        label: 'Firebase Auth (email/password)',
-                        done: true,
-                      ),
-                      const _StatusRow(
-                        label: 'Cloud Firestore profile bootstrap',
-                        done: true,
-                      ),
-                      const _StatusRow(
-                        label: 'Sessions, queue, voting, chat',
-                        done: false,
-                      ),
-                    ],
+              const SizedBox(height: 20),
+              Row(
+                children: [
+                  Expanded(
+                    child: FilledButton.icon(
+                      icon: const Icon(Icons.add),
+                      label: const Text('Start a session'),
+                      onPressed: () => context.push('/create-session'),
+                    ),
                   ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      icon: const Icon(Icons.login),
+                      label: const Text('Join with code'),
+                      onPressed: () => context.push('/join-session'),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 24),
+              Text(
+                'Your sessions',
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 8),
+              sessionsAsync.when(
+                data: (sessions) {
+                  if (sessions.isEmpty) return const _EmptyState();
+                  return Column(
+                    children: [
+                      for (final session in sessions)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: SessionCard(
+                            session: session,
+                            isOwner: session.ownerId == currentUser?.uid,
+                            onTap: () =>
+                                context.push('/session/${session.id}'),
+                          ),
+                        ),
+                    ],
+                  );
+                },
+                loading: () => const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 40),
+                  child: Center(child: CircularProgressIndicator()),
+                ),
+                error: (error, _) => ErrorScreen(
+                  error: error,
+                  onRetry: () => ref.invalidate(mySessionsProvider),
                 ),
               ),
             ],
@@ -88,29 +117,36 @@ class HomeScreen extends ConsumerWidget {
   }
 }
 
-class _StatusRow extends StatelessWidget {
-  const _StatusRow({required this.label, required this.done});
-
-  final String label;
-  final bool done;
+class _EmptyState extends StatelessWidget {
+  const _EmptyState();
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        children: [
-          Icon(
-            done ? Icons.check_circle : Icons.radio_button_unchecked,
-            size: 20,
-            color: done
-                ? theme.colorScheme.primary
-                : theme.colorScheme.outline,
-          ),
-          const SizedBox(width: 12),
-          Expanded(child: Text(label, style: theme.textTheme.bodyMedium)),
-        ],
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(Icons.queue_music, color: theme.colorScheme.primary),
+            const SizedBox(height: 12),
+            Text(
+              'No sessions yet',
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Start a session to build a shared queue, or ask a friend for '
+              'their 6-character join code.',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
