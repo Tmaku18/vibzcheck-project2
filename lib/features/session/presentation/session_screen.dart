@@ -104,6 +104,11 @@ class _SessionView extends ConsumerWidget {
       appBar: AppBar(
         title: Text(session.title, overflow: TextOverflow.ellipsis),
         actions: [
+          IconButton(
+            tooltip: 'Open chat',
+            icon: const Icon(Icons.forum_outlined),
+            onPressed: () => context.push('/session/${session.id}/chat'),
+          ),
           if (isOwner)
             IconButton(
               tooltip: 'End session',
