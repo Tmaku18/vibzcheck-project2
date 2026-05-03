@@ -1,13 +1,18 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/firebase/firebase_providers.dart';
 import '../domain/track.dart';
+import 'spotify_track_search_repository.dart';
 
 /// Abstract catalogue search so the UI never depends on a specific backend.
 ///
-/// Phase 2 ships [MockTrackSearchRepository] so the end-to-end session /
-/// queue / voting flow can be demoed without Spotify credentials. Phase 3
-/// replaces the provider override with a Cloud-Functions-backed
-/// `SpotifyTrackSearchRepository` without touching any UI code.
+/// Phase 2 shipped [MockTrackSearchRepository] so the end-to-end session /
+/// queue / voting flow could be demoed without Spotify credentials. Phase 3
+/// adds [SpotifyTrackSearchRepository] backed by a Cloud Functions bridge,
+/// which the default [trackSearchRepositoryProvider] now wires up.
+///
+/// Tests override `trackSearchRepositoryProvider` with
+/// [MockTrackSearchRepository] so they don't need a Firebase project.
 abstract class TrackSearchRepository {
   Future<List<Track>> search(String query);
 }
@@ -146,5 +151,7 @@ class MockTrackSearchRepository implements TrackSearchRepository {
 }
 
 final trackSearchRepositoryProvider = Provider<TrackSearchRepository>((ref) {
-  return const MockTrackSearchRepository();
+  return SpotifyTrackSearchRepository(
+    functions: ref.watch(firebaseFunctionsProvider),
+  );
 });
