@@ -95,7 +95,14 @@ async function getSpotifyAccessToken(
     return cachedToken.value;
   }
 
-  const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString(
+  // Defensive trim: PowerShell's pipe and several other shells silently
+  // append CR/LF when piping into `firebase functions:secrets:set`, which
+  // Spotify rejects with `invalid_client`. Trimming here means the function
+  // is robust against an accidentally-newline-terminated secret value.
+  const cleanId = clientId.trim();
+  const cleanSecret = clientSecret.trim();
+
+  const credentials = Buffer.from(`${cleanId}:${cleanSecret}`).toString(
     "base64",
   );
 
@@ -209,6 +216,11 @@ export const searchTracks = onCall(
     enforceAppCheck: false,
     timeoutSeconds: 15,
     memory: "256MiB",
+    // Gen 2 callables run on Cloud Run, which by default rejects all
+    // unauthenticated traffic at the IAM layer. We need `public` so the
+    // request reaches our handler, where the Firebase callable middleware
+    // then validates the user's ID token and populates `request.auth`.
+    invoker: "public",
   },
   async (request) => {
     if (!request.auth) {
