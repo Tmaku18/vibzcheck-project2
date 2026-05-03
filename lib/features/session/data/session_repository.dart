@@ -23,6 +23,12 @@ class SessionRepository {
   CollectionReference<Map<String, dynamic>> get _sessions =>
       _firestore.collection('sessions');
 
+  /// Public mapping of `code -> {sessionId, ownerId}` so non-members can
+  /// resolve a 6-character join code without us having to grant blanket
+  /// read access on the whole `sessions` collection. See `firestore.rules`.
+  CollectionReference<Map<String, dynamic>> get _joinCodes =>
+      _firestore.collection('joinCodes');
+
   DocumentReference<Map<String, dynamic>> _sessionRef(String id) =>
       _sessions.doc(id);
 
@@ -62,7 +68,12 @@ class SessionRepository {
 
     final batch = _firestore.batch()
       ..set(ref, session.toFirestore())
-      ..set(memberRef, member.toFirestore());
+      ..set(memberRef, member.toFirestore())
+      ..set(_joinCodes.doc(code), {
+        'sessionId': ref.id,
+        'ownerId': ownerId,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
     await batch.commit();
     return session;
   }
@@ -101,30 +112,33 @@ class SessionRepository {
     required String displayName,
   }) async {
     final normalised = code.trim().toUpperCase();
-    final query = await _sessions
-        .where('code', isEqualTo: normalised)
-        .limit(1)
-        .get();
-    if (query.docs.isEmpty) {
+    // Step 1: resolve code -> sessionId via the public mapping doc. Non-
+    // members can't read the sessions collection directly, so this hop is
+    // what makes "join by code" possible without weakening session privacy.
+    final mapping = await _joinCodes.doc(normalised).get();
+    if (!mapping.exists) {
       throw SessionNotFoundException(normalised);
     }
-    final sessionDoc = query.docs.first;
+    final sessionId = mapping.data()?['sessionId'] as String?;
+    if (sessionId == null) {
+      throw SessionNotFoundException(normalised);
+    }
+    final sessionRef = _sessionRef(sessionId);
+
+    // Step 2: add ourselves to the session in a single transaction. We
+    // deliberately avoid `tx.get(sessionRef)` here: the read rule still
+    // forbids non-members from reading the session body, and we don't need
+    // to read it anyway because `arrayUnion` is idempotent. The
+    // `memberCount` increment over-counts only if the same user joins twice
+    // before the UI navigates away, which the join-screen flow prevents.
     await _firestore.runTransaction((tx) async {
-      final fresh = await tx.get(sessionDoc.reference);
-      final data = fresh.data() ?? <String, dynamic>{};
-      final members =
-          (data['memberIds'] as List?)?.whereType<String>().toSet() ??
-              <String>{};
-      if (!members.contains(uid)) {
-        members.add(uid);
-        tx.update(sessionDoc.reference, {
-          'memberIds': members.toList(),
-          'memberCount': members.length,
-          'updatedAt': FieldValue.serverTimestamp(),
-        });
-      }
+      tx.update(sessionRef, {
+        'memberIds': FieldValue.arrayUnion([uid]),
+        'memberCount': FieldValue.increment(1),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
       tx.set(
-        sessionDoc.reference.collection('members').doc(uid),
+        sessionRef.collection('members').doc(uid),
         SessionMember(
           uid: uid,
           displayName: displayName,
@@ -133,7 +147,9 @@ class SessionRepository {
         ).toFirestore(),
       );
     });
-    final refreshed = await sessionDoc.reference.get();
+    // Step 3: now that we're a member the read rule lets us pull the
+    // refreshed session for the caller to navigate into.
+    final refreshed = await sessionRef.get();
     return Session.fromFirestore(refreshed);
   }
 
@@ -166,10 +182,19 @@ class SessionRepository {
   }
 
   Future<void> endSession(String sessionId) async {
-    await _sessionRef(sessionId).update({
-      'status': SessionStatus.ended.asString,
-      'updatedAt': FieldValue.serverTimestamp(),
-    });
+    final snap = await _sessionRef(sessionId).get();
+    final code = (snap.data() ?? const <String, dynamic>{})['code'] as String?;
+    final batch = _firestore.batch()
+      ..update(_sessionRef(sessionId), {
+        'status': SessionStatus.ended.asString,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    // Drop the public code mapping so the same code can't be used to join
+    // an ended session. Keeps `joinCodes` from accumulating stale entries.
+    if (code != null && code.isNotEmpty) {
+      batch.delete(_joinCodes.doc(code));
+    }
+    await batch.commit();
   }
 
   // 6-char codes use an unambiguous alphabet (no 0/O/1/I) so friends can
