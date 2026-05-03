@@ -75,6 +75,8 @@ lib/
         presentation/suggestions_card.dart
       notifications/
         fcm_service.dart                # FCM permission, token sync, foreground snackbars
+functions/                              # Cloud Functions (TypeScript, Node 22, Gen 2)
+  src/index.ts                          # searchTracks callable (Spotify Web API bridge)
 firestore.rules                    # auth-required, owner/member checks
 firestore.indexes.json             # composite indexes for queue/chat/sessions
 storage.rules                      # avatars: owner-only writes <5MB images
@@ -124,6 +126,50 @@ firebase use vibzcheck-tmaku
 firebase deploy --only firestore:rules,firestore:indexes,storage
 ```
 
+### 4. Cloud Functions (Spotify search bridge)
+
+The `searchTracks` callable in `functions/src/index.ts` proxies the
+[Spotify Web API](https://developer.spotify.com/documentation/web-api)
+server-side using the Client Credentials Flow. The Spotify Client Secret
+**never** ships in the APK — it lives in Google Secret Manager and is
+only loaded into the function's runtime memory at invocation time.
+
+If you are forking or re-deploying this project from scratch:
+
+1. Upgrade the Firebase project to the **Blaze (pay-as-you-go)** plan.
+   Cloud Functions Gen 2 free tier covers ~2M invocations/month, so a
+   classroom demo costs $0.
+2. Create a Spotify Developer app at
+   https://developer.spotify.com/dashboard. Tick **Web API** as the only
+   API.
+3. Push the credentials into Secret Manager (they will not touch git):
+
+   ```bash
+   "<YOUR_CLIENT_ID>"     | firebase functions:secrets:set SPOTIFY_CLIENT_ID --data-file=-
+   "<YOUR_CLIENT_SECRET>" | firebase functions:secrets:set SPOTIFY_CLIENT_SECRET --data-file=-
+   ```
+
+4. Grant the default compute service account the build roles needed by
+   Cloud Functions Gen 2 (one-time, required for every new Blaze project
+   as of late 2025): in the
+   [IAM console](https://console.cloud.google.com/iam-admin/iam?project=vibzcheck-tmaku),
+   add the **Cloud Build Service Account** and **Artifact Registry
+   Writer** roles to `<PROJECT_NUMBER>-compute@developer.gserviceaccount.com`.
+
+5. Install dependencies and deploy:
+
+   ```bash
+   cd functions
+   npm install
+   cd ..
+   firebase deploy --only functions
+   ```
+
+The Flutter `SpotifyTrackSearchRepository` calls this function via
+`FirebaseFunctions.httpsCallable('searchTracks')` and falls back to the
+mock catalogue when the call fails so the UI stays usable offline or
+during incidents.
+
 ### 4. Run on Android
 
 ```bash
@@ -156,8 +202,9 @@ Both are currently green; CI/manual evidence is captured each commit.
       mood tag chips + filter, session mood summary, avatar upload via
       Firebase Storage, FCM permission + token sync, rule-based next-3-song
       helper with explainable factors, graduate-level fairness-ranking
-      module with per-track explanations. Real Spotify bridge still pending
-      Blaze upgrade + creds.
+      module with per-track explanations, **real Spotify search via the
+      `searchTracks` Cloud Function (Client Credentials Flow, secrets in
+      Google Secret Manager)**.
 - [ ] **Phase 4 — Submission:** Tests, screenshots, APK, slides, demo video,
       curated questions coverage.
 
