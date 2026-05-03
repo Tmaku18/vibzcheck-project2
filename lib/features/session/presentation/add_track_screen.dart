@@ -45,7 +45,9 @@ class _AddTrackScreenState extends ConsumerState<AddTrackScreen> {
   @override
   void initState() {
     super.initState();
-    _runSearch('');
+    // We deliberately don't auto-search on open: the live Spotify backend
+    // returns nothing for empty queries, and showing a clear "Type to
+    // search" hint is a better first impression than an empty list.
   }
 
   @override
@@ -167,18 +169,32 @@ class _AddTrackScreenState extends ConsumerState<AddTrackScreen> {
               child: Builder(builder: (_) {
                 final filtered = _filteredResults.toList();
                 if (filtered.isEmpty) {
+                  final query = _searchController.text.trim();
+                  final message = query.isEmpty
+                      ? 'Type a song, artist, or album to search Spotify.'
+                      : (_selectedMood != null
+                          ? 'No tracks tagged #$_selectedMood match "$query".'
+                          : 'No tracks match "$query".');
                   return Center(
                     child: Padding(
                       padding: const EdgeInsets.all(24),
-                      child: Text(
-                        _selectedMood != null
-                            ? 'No tracks tagged #$_selectedMood match '
-                                '"${_searchController.text}".'
-                            : 'No tracks match "${_searchController.text}".',
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                        textAlign: TextAlign.center,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            query.isEmpty ? Icons.search : Icons.search_off,
+                            size: 36,
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            message,
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
                       ),
                     ),
                   );
