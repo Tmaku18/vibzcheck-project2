@@ -9,6 +9,15 @@
       ]
     },
     {
+      "collectionGroup": "queue",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "played", "order": "ASCENDING" },
+        { "fieldPath": "voteScore", "order": "DESCENDING" },
+        { "fieldPath": "addedAt", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "sessions",
       "queryScope": "COLLECTION",
       "fields": [
