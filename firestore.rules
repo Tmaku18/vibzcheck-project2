@@ -38,6 +38,34 @@ service cloud.firestore {
         && request.auth.uid in sessionData(sessionId).memberIds;
     }
 
+    // True when the only thing this update does is add the caller's own uid
+    // to `memberIds` (and bump the denormalised counters/timestamps that
+    // accompany it). Lets non-members "join by code" without granting them
+    // permission to mutate any other field of the session document.
+    function isJoiningSelf() {
+      return isSignedIn()
+        && !(request.auth.uid in resource.data.memberIds)
+        && request.auth.uid in request.resource.data.memberIds
+        && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['memberIds', 'memberCount', 'updatedAt']);
+    }
+
+    // ---------------- joinCodes/{code} ----------------
+    // Tiny mapping doc keyed by the 6-char join code so non-members can
+    // resolve a code to its sessionId without us having to expose the full
+    // sessions collection to enumeration. Holds nothing sensitive (only
+    // sessionId + ownerId), and is created in the same batch as the session
+    // itself so the two never drift.
+    match /joinCodes/{code} {
+      allow read:   if isSignedIn();
+      allow create: if isSignedIn()
+        && request.resource.data.ownerId == request.auth.uid;
+      allow update: if isSignedIn()
+        && resource.data.ownerId == request.auth.uid;
+      allow delete: if isSignedIn()
+        && resource.data.ownerId == request.auth.uid;
+    }
+
     // ---------------- users/{uid} ----------------
     match /users/{uid} {
       allow read:   if isSelf(uid);
@@ -59,11 +87,12 @@ service cloud.firestore {
         && request.resource.data.ownerId == request.auth.uid
         && request.auth.uid in request.resource.data.memberIds;
 
-      // Any member can update the session doc (to add themselves on join,
-      // update currentTrackId, etc.). Owner-only ops run as owner.
+      // Existing members and the owner can update freely. Non-members may
+      // update *only* to add themselves on join (see `isJoiningSelf`).
       allow update: if isSignedIn()
         && (request.auth.uid in resource.data.memberIds
-            || resource.data.ownerId == request.auth.uid);
+            || resource.data.ownerId == request.auth.uid
+            || isJoiningSelf());
 
       allow delete: if isSessionOwner(sessionId);
 
