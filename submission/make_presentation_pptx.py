@@ -202,14 +202,20 @@ SLIDES: list[Slide] = [
         title="How the data is organized",
         subtitle="Q10 — Firebase",
         body=[
-            "Three main collections:",
-            "   • users — profile and preferences",
-            "   • sessions — the playlist room itself",
-            "   • joinCodes — lookup so friends can join with a 6-letter code",
-            "",
-            "Inside each session: members, queue (songs), messages (chat), suggestions (AI)",
-            "",
-            "This makes security rules simple and screens fast — leaving cleans up automatically.",
+            "Three main collections plus subcollections under each session:",
+            {
+                "code": (
+                    "users/{uid}\n"
+                    "sessions/{sessionId}\n"
+                    "  ├── members/{uid}\n"
+                    "  ├── queue/{trackId}\n"
+                    "  ├── messages/{messageId}\n"
+                    "  └── suggestions/{snapshotId}\n"
+                    "joinCodes/{code}    ← public lookup"
+                )
+            },
+            "Subcollections keep security rules simple — one membership check per request.",
+            "joinCodes is deliberately top-level and public-readable (next slide explains why).",
         ],
         image="screenshots/20_home_sessions.png",
         notes=(
@@ -232,12 +238,19 @@ SLIDES: list[Slide] = [
         subtitle="Q14 + Q6 — Reflection + Architecture",
         body=[
             "Host creates the room (left), shares a 6-character code; joiner types it (right)",
-            "Early version: to join you had to see every session — that broke privacy rules",
-            "Solution:",
-            "   1. A small public lookup table (joinCodes) anyone logged in can read",
-            "   2. A rule that lets a new person add ONLY themselves to the member list",
-            "",
-            "Hardest bug I fixed — see Bug 2 in the bug log.",
+            "Solution: public joinCodes lookup + a rule that lets you add ONLY yourself:",
+            {
+                "code": (
+                    "function isJoiningSelf() {\n"
+                    "  return isSignedIn()\n"
+                    "    && !(request.auth.uid in resource.data.memberIds)\n"
+                    "    && request.auth.uid in request.resource.data.memberIds\n"
+                    "    && request.resource.data.diff(resource.data).affectedKeys()\n"
+                    "        .hasOnly(['memberIds', 'memberCount', 'updatedAt']);\n"
+                    "}"
+                )
+            },
+            "affectedKeys.hasOnly is the safety net — they can't change ownerId or status.",
         ],
         image=[
             "screenshots/21_create_session.png",
@@ -266,12 +279,28 @@ SLIDES: list[Slide] = [
         title="Making the home screen fast again",
         subtitle="Q11 — Firebase",
         body=[
-            "The home screen asks: 'show me all the sessions I'm part of, newest first'",
-            "That combination of filters needs a special index in the database",
-            "I added it to firestore.indexes.json so it deploys automatically",
-            "",
-            "Without it the screen spun forever. With it the list (right) appears in under 200 ms.",
-            "Same fix was needed for the playlist view once we started hiding played songs.",
+            "The home screen's 'sessions I'm in, newest first' query:",
+            {
+                "code": (
+                    "_sessions\n"
+                    "    .where('memberIds', arrayContains: uid)\n"
+                    "    .orderBy('updatedAt', descending: true)\n"
+                    "    .snapshots();"
+                )
+            },
+            "array-contains + orderBy on a different field needs a composite index:",
+            {
+                "code": (
+                    "{\n"
+                    '  "collectionGroup": "sessions",\n'
+                    '  "fields": [\n'
+                    '    {"fieldPath": "memberIds", "arrayConfig": "CONTAINS"},\n'
+                    '    {"fieldPath": "updatedAt", "order": "DESCENDING"}\n'
+                    "  ]\n"
+                    "}"
+                )
+            },
+            "Without it: spinner forever. With it: list (right) emits in under 200 ms.",
         ],
         image="screenshots/20_home_sessions.png",
         notes=(
@@ -295,11 +324,22 @@ SLIDES: list[Slide] = [
         title="Only you can edit your own profile",
         subtitle="Q12 — Firebase",
         body=[
-            "Rule: if the person asking is logged in as you, they can read and change your profile",
-            "If they're not logged in, or they're looking at someone else's profile, the request is blocked",
-            "Deleting profiles is turned off completely — handled through a secure server process",
-            "",
-            "I tested this in the Firebase console and with automated tests so I know it works.",
+            "Every user can read or write only their own profile document:",
+            {
+                "code": (
+                    "match /users/{uid} {\n"
+                    "  allow read:   if isSelf(uid);\n"
+                    "  allow create: if isSelf(uid);\n"
+                    "  allow update: if isSelf(uid);\n"
+                    "  allow delete: if false;\n"
+                    "}\n"
+                    "function isSelf(uid) {\n"
+                    "  return isSignedIn() && request.auth.uid == uid;\n"
+                    "}"
+                )
+            },
+            "Unauthenticated → request.auth is null → isSignedIn fails → denied.",
+            "Delete is hard-off; profile cleanup goes through a Cloud Function with Admin SDK.",
         ],
         image="screenshots/11_signup.png",
         notes=(
@@ -381,10 +421,19 @@ SLIDES: list[Slide] = [
         title="When the Spotify search fails, the app still works",
         subtitle="Q7 + Q2 — Testing + Implementation (rework)",
         body=[
-            "The app calls a Cloud Function to search Spotify (secret stays safe on the server)",
-            "If the function fails, the app falls back to a built-in list instead of showing nothing",
-            "Add Track no longer auto-searches when you open it — you type first",
-            "Saves server calls and feels faster",
+            "The repo narrows what it rethrows so a backend hiccup doesn't empty the screen:",
+            {
+                "code": (
+                    "} on FirebaseFunctionsException catch (e, stack) {\n"
+                    "  if (e.code == 'unauthenticated' ||\n"
+                    "      e.code == 'failed-precondition') {\n"
+                    "    rethrow; // user / config errors fallback can't fix\n"
+                    "  }\n"
+                    "  return _fallback.search(query); // mock catalogue\n"
+                    "}"
+                )
+            },
+            "Add Track no longer auto-searches on mount — you type first, then we call out.",
         ],
         image="screenshots/31_add_track_drake.png",
         notes=(
@@ -407,11 +456,16 @@ SLIDES: list[Slide] = [
         title="Sign-in errors are friendly and safe",
         subtitle="Q8 — Testing",
         body=[
-            "Instead of technical messages like 'user-not-found' or 'wrong-password', the app shows one line:",
-            "'Email or password is incorrect.'",
-            "",
-            "Deliberate — it stops anyone from figuring out which emails have accounts (security best practice).",
-            "11 automated tests guarantee the friendly message can never leak technical details.",
+            "Three different Firebase Auth codes collapse into one shared message:",
+            {
+                "code": (
+                    "user-not-found        ┐\n"
+                    "wrong-password        ├──→  \"Email or password is incorrect.\"\n"
+                    "invalid-credential    ┘"
+                )
+            },
+            "Deliberate — stops attackers from enumerating which emails have accounts.",
+            "11 tests in auth_error_messages_test.dart pin this contract exhaustively.",
         ],
         image="screenshots/10_signin.png",
         notes=(
@@ -431,13 +485,16 @@ SLIDES: list[Slide] = [
         title="Performance: the home screen used to spin forever",
         subtitle="Q9 — Testing",
         body=[
-            "After adding the join-by-code feature, the home screen would show a loading spinner and never finish",
-            "The phone logs told me exactly why: 'The query requires an index'",
-            "I added the missing index to a file called firestore.indexes.json and redeployed",
-            "The list now loads in under 200 milliseconds on both phones",
-            "The same fix was needed later for the playlist view once we started hiding already-played songs",
-            "",
-            "Lesson: when something is slow, look at the server logs first, not just the phone screen.",
+            "Home screen spun forever after the join-by-code rewrite. adb logcat told me why:",
+            {
+                "code": (
+                    "05-03 logcat:  FAILED_PRECONDITION: query requires an index\n"
+                    "05-03 logcat:  (resolved 187 ms after index deploy)"
+                )
+            },
+            "Added the composite index to firestore.indexes.json, redeployed, fixed.",
+            "Same playbook resolved a near-identical bug on the queue listener (Bug 4).",
+            "Lesson: when something is slow, look at the SERVER's logs first, not the client's.",
         ],
         notes=(
             "The home screen sessions list spun forever for both emulators "
@@ -490,11 +547,24 @@ SLIDES: list[Slide] = [
         title="Everything you need to check my work",
         subtitle="Supports the rubric's Functionality & Testing slice",
         body=[
-            "62 automated tests all pass — including tests for voting, the AI suggestions, the fairness ranking, and the Spotify fallback",
-            "A bug log explains the six hardest problems I ran into and exactly how I fixed them",
-            "The full answer key with code references is in CURATED_QUESTIONS.md",
-            "A separate Word document with only the questions (as the rubric asks) is also included",
-            "Screenshots from both phones and a signed release APK are in the submission folder",
+            "All tests pass:",
+            {
+                "code": (
+                    "$ flutter test\n"
+                    "00:02 +63: All tests passed!"
+                )
+            },
+            "Everything the grader needs lives in submission/:",
+            {
+                "code": (
+                    "submission/\n"
+                    "  BUG_LOG.md            (seven bugs, root-cause format)\n"
+                    "  CURATED_QUESTIONS.md  (14 questions, full answers)\n"
+                    "  screenshots/\n"
+                    "  Vibzcheck-1.0.0-release.apk"
+                )
+            },
+            "Bug log + answer key + screenshots + signed APK, all in one folder.",
         ],
         notes=(
             "Sixty-two tests, all green: nine test files covering the "
