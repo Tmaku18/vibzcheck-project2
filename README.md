@@ -205,8 +205,39 @@ Both are currently green; CI/manual evidence is captured each commit.
       module with per-track explanations, **real Spotify search via the
       `searchTracks` Cloud Function (Client Credentials Flow, secrets in
       Google Secret Manager)**.
-- [ ] **Phase 4 — Submission:** Tests, screenshots, APK, slides, demo video,
-      curated questions coverage.
+- [x] **Phase 4 — Submission:** Hardening tests (62 cases green), bug log,
+      14-question curated Q&A pack, base demo screenshots, signed release
+      APK staged in `submission/`. See [Submission bundle](#submission-bundle)
+      below.
+
+---
+
+## Submission bundle
+
+Everything the grader needs for Project 2 review lives in
+[`submission/`](submission/). The `docs/` folder is intentionally
+gitignored (course PDFs, internal planning artefacts), so all
+*tracked* submission evidence is consolidated here:
+
+| File | Purpose |
+| --- | --- |
+| [`submission/Vibzcheck-1.0.0-release.apk`](submission/Vibzcheck-1.0.0-release.apk) | Signed release APK (50.5 MB), ready for sideload onto any Android 8+ device. |
+| [`submission/CURATED_QUESTIONS.md`](submission/CURATED_QUESTIONS.md) | The 14 curated questions with full answers, code citations, and commit hashes. |
+| [`submission/Makuvaza_Tanaka_Vibzcheck_Project2_Curated_Questions.docx`](submission/Makuvaza_Tanaka_Vibzcheck_Project2_Curated_Questions.docx) | The rubric-required *questions-only* Word document. Generated from `make_questions_only_doc.py`. |
+| [`submission/BUG_LOG.md`](submission/BUG_LOG.md) | Diary of the six hardest bugs (issue → root cause → fix → files → commit). |
+| [`submission/screenshots/`](submission/screenshots/) | Demo screenshots from both emulators plus a `CAPTURE_GUIDE.md` for refreshing them. |
+| [`Makuvaza_Tanaka_Vibzcheck_Project2_Proposal.docx`](Makuvaza_Tanaka_Vibzcheck_Project2_Proposal.docx) | Phase 1 proposal (top-level). |
+| [`Makuvaza_Tanaka_Vibzcheck_Project2_Signed_Statement.pdf`](Makuvaza_Tanaka_Vibzcheck_Project2_Signed_Statement.pdf) | Signed academic-integrity commitment statement (top-level). |
+
+Re-running the full quality bar before submission:
+
+```powershell
+flutter analyze
+flutter test
+python submission/make_questions_only_doc.py
+flutter build apk --release
+Copy-Item build\app\outputs\flutter-apk\app-release.apk submission\Vibzcheck-1.0.0-release.apk -Force
+```
 
 ---
 
