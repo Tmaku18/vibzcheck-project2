@@ -224,6 +224,7 @@ gitignored (course PDFs, internal planning artefacts), so all
 | [`submission/Vibzcheck-1.0.0-release.apk`](submission/Vibzcheck-1.0.0-release.apk) | Signed release APK (50.5 MB), ready for sideload onto any Android 8+ device. |
 | [`submission/Vibzcheck_Presentation.pptx`](submission/Vibzcheck_Presentation.pptx) | 18-slide starter deck for the 22-minute presentation. Speaker script lives in the notes pane. Generated from `make_presentation_pptx.py`. |
 | [`submission/PRESENTATION_SCRIPT.md`](submission/PRESENTATION_SCRIPT.md) | Speaker script with timing budget and rehearsal checklist (the prose source the deck was generated from). |
+| [`submission/Makuvaza_Tanaka_Vibzcheck_Project2_Presentation_Script.docx`](submission/Makuvaza_Tanaka_Vibzcheck_Project2_Presentation_Script.docx) | The presentation script in Word format. Generated from `make_script_doc.py` reading `PRESENTATION_SCRIPT.md`. |
 | [`submission/CURATED_QUESTIONS.md`](submission/CURATED_QUESTIONS.md) | The 14 curated questions with full answers, code citations, and commit hashes. |
 | [`submission/Makuvaza_Tanaka_Vibzcheck_Project2_Curated_Questions.docx`](submission/Makuvaza_Tanaka_Vibzcheck_Project2_Curated_Questions.docx) | The rubric-required *questions-only* Word document. Generated from `make_questions_only_doc.py`. |
 | [`submission/Makuvaza_Tanaka_Vibzcheck_Project2_Curated_Questions_Answers.docx`](submission/Makuvaza_Tanaka_Vibzcheck_Project2_Curated_Questions_Answers.docx) | The full answer key in Word format (questions + researched answers + code references). Generated from `make_qa_doc.py` reading `CURATED_QUESTIONS.md`. |
@@ -241,6 +242,7 @@ flutter test
 python submission/make_questions_only_doc.py
 python submission/make_qa_doc.py
 python submission/make_bug_log_doc.py
+python submission/make_script_doc.py
 python submission/make_presentation_pptx.py
 flutter build apk --release
 Copy-Item build\app\outputs\flutter-apk\app-release.apk submission\Vibzcheck-1.0.0-release.apk -Force

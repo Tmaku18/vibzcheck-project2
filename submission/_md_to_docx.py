@@ -9,6 +9,9 @@ submission documents (`CURATED_QUESTIONS.md`, `BUG_LOG.md`):
     - Code fences ```lang ... ```
     - Bullet lists (`- `) with indented continuation lines
     - Numbered lists (`1. `, `2. `, ...) with indented continuation lines
+    - Blockquotes (`> ...`) -- rendered as indented italic paragraphs
+      with a colored left border
+    - GFM pipe tables -- rendered as Word tables
     - Horizontal rules (`---`) -- rendered as a thin spacer
 
 It is *not* a general-purpose Markdown engine. The goal is reproducible,
@@ -35,12 +38,27 @@ from docx.shared import Pt, RGBColor
 # ---------------------------------------------------------------------------
 
 
+def _split_pipe_row(row: str) -> list[str]:
+    """Split a `| col | col |` row into stripped cell strings."""
+    inner = row.strip()
+    if inner.startswith("|"):
+        inner = inner[1:]
+    if inner.endswith("|"):
+        inner = inner[:-1]
+    return [cell.strip() for cell in inner.split("|")]
+
+
 @dataclass
 class Block:
-    kind: str  # "heading" | "paragraph" | "bullet" | "number" | "code" | "rule"
+    kind: str  # heading | paragraph | bullet | number | code | rule | quote | table
     text: str = ""
     level: int = 0  # heading level OR list ordinal
     language: str = ""  # for code blocks
+    # For quote blocks: list of paragraphs (already stripped of leading "> ").
+    quote_paragraphs: list[str] | None = None
+    # For tables: header row + body rows, each a list of cell strings.
+    table_header: list[str] | None = None
+    table_rows: list[list[str]] | None = None
 
 
 def parse_blocks(markdown: str) -> list[Block]:
@@ -69,6 +87,50 @@ def parse_blocks(markdown: str) -> list[Block]:
             blocks.append(Block("rule"))
             i += 1
             continue
+
+        # ---- blockquote -------------------------------------------------
+        if stripped.startswith(">"):
+            paragraphs: list[str] = []
+            buf: list[str] = []
+
+            def flush() -> None:
+                if buf:
+                    paragraphs.append(" ".join(buf).strip())
+                    buf.clear()
+
+            while i < len(lines) and lines[i].lstrip().startswith(">"):
+                inner = lines[i].lstrip()[1:].strip()
+                if not inner:
+                    flush()
+                else:
+                    buf.append(inner)
+                i += 1
+            flush()
+            blocks.append(Block("quote", quote_paragraphs=paragraphs))
+            continue
+
+        # ---- pipe table -------------------------------------------------
+        # Detect a header row followed by a separator like `| --- | --- |`.
+        if stripped.startswith("|") and i + 1 < len(lines):
+            sep = lines[i + 1].strip()
+            if re.match(r"^\|?\s*:?-{3,}:?(\s*\|\s*:?-{3,}:?)*\s*\|?\s*$", sep):
+                header = _split_pipe_row(stripped)
+                rows: list[list[str]] = []
+                i += 2  # consume header + separator
+                while i < len(lines):
+                    row_line = lines[i].strip()
+                    if not row_line.startswith("|"):
+                        break
+                    rows.append(_split_pipe_row(row_line))
+                    i += 1
+                blocks.append(
+                    Block(
+                        "table",
+                        table_header=header,
+                        table_rows=rows,
+                    )
+                )
+                continue
 
         # ---- headings --------------------------------------------------
         m = re.match(r"^(#{1,6})\s+(.*)$", line)
@@ -159,6 +221,10 @@ def parse_blocks(markdown: str) -> list[Block]:
             if nxt.strip().startswith("```"):
                 break
             if nxt.strip() == "---":
+                break
+            if nxt.lstrip().startswith(">"):
+                break
+            if nxt.lstrip().startswith("|"):
                 break
             para_lines.append(nxt.strip())
             i += 1
@@ -270,6 +336,85 @@ def _add_code_block(doc: DocumentType, code: str) -> None:
     run.font.size = Pt(9)
 
 
+def _add_blockquote(doc: DocumentType, paragraphs: list[str]) -> None:
+    """Render a multi-paragraph blockquote with a colored left border."""
+    for idx, text in enumerate(paragraphs):
+        if not text:
+            continue
+        para = doc.add_paragraph()
+        para.paragraph_format.left_indent = Pt(18)
+        para.paragraph_format.space_before = Pt(2)
+        para.paragraph_format.space_after = Pt(4 if idx < len(paragraphs) - 1 else 8)
+
+        p_pr = para._p.get_or_add_pPr()
+        pBdr = OxmlElement("w:pBdr")
+        left = OxmlElement("w:left")
+        left.set(qn("w:val"), "single")
+        left.set(qn("w:sz"), "12")
+        left.set(qn("w:space"), "8")
+        left.set(qn("w:color"), "5B6CB7")  # muted indigo, matches the deck
+        pBdr.append(left)
+        p_pr.append(pBdr)
+
+        for run in parse_inline(text):
+            r = para.add_run(run.text)
+            r.italic = True  # whole quote reads as voiced speech
+            if run.bold:
+                r.bold = True
+            if run.code:
+                r.font.name = "Consolas"
+                r.font.size = Pt(10)
+                r.font.color.rgb = RGBColor(0x33, 0x33, 0x33)
+            if run.link is not None:
+                r.font.color.rgb = RGBColor(0x1A, 0x4B, 0x9C)
+                r.underline = True
+
+
+def _add_table(
+    doc: DocumentType,
+    header: list[str],
+    rows: list[list[str]],
+) -> None:
+    """Render a GFM pipe table as a styled Word table."""
+    column_count = max(len(header), max((len(r) for r in rows), default=0))
+    if column_count == 0:
+        return
+    table = doc.add_table(rows=1 + len(rows), cols=column_count)
+    try:
+        table.style = "Light Grid Accent 1"
+    except KeyError:
+        table.style = "Table Grid"
+
+    header_row = table.rows[0]
+    for col_idx in range(column_count):
+        cell = header_row.cells[col_idx]
+        cell.text = ""
+        para = cell.paragraphs[0]
+        run = para.add_run(header[col_idx] if col_idx < len(header) else "")
+        run.bold = True
+
+    for row_idx, row in enumerate(rows, start=1):
+        word_row = table.rows[row_idx]
+        for col_idx in range(column_count):
+            cell = word_row.cells[col_idx]
+            cell.text = ""
+            para = cell.paragraphs[0]
+            text = row[col_idx] if col_idx < len(row) else ""
+            for run in parse_inline(text):
+                r = para.add_run(run.text)
+                if run.bold:
+                    r.bold = True
+                if run.italic:
+                    r.italic = True
+                if run.code:
+                    r.font.name = "Consolas"
+                    r.font.size = Pt(9)
+                    r.font.color.rgb = RGBColor(0x33, 0x33, 0x33)
+                if run.link is not None:
+                    r.font.color.rgb = RGBColor(0x1A, 0x4B, 0x9C)
+                    r.underline = True
+
+
 def _add_horizontal_rule(doc: DocumentType) -> None:
     para = doc.add_paragraph()
     para.paragraph_format.space_before = Pt(2)
@@ -305,6 +450,14 @@ def render_blocks(doc: DocumentType, blocks: list[Block]) -> None:
 
         if block.kind == "code":
             _add_code_block(doc, block.text)
+            continue
+
+        if block.kind == "quote":
+            _add_blockquote(doc, block.quote_paragraphs or [])
+            continue
+
+        if block.kind == "table":
+            _add_table(doc, block.table_header or [], block.table_rows or [])
             continue
 
         if block.kind == "bullet":
