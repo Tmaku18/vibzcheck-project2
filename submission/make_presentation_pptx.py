@@ -86,15 +86,15 @@ SLIDES: list[Slide] = [
     ),
     # 2 - Live demo
     Slide(
-        title="Live demo: two devices, one queue",
+        title="Live demo: two phones, one shared playlist",
         subtitle="Demo (Slide 2)",
         body=[
-            "Device A (Alice, owner): sign in -> Start a session 'Demo' -> read 6-char code aloud",
-            "Device B (Bob, joiner): sign in -> Join with code -> lands in same session",
-            "Device A: Add a track -> search 'weeknd' -> + on Blinding Lights",
-            "Both screens update via Firestore stream listener (no polling)",
-            "Device B upvotes -> score flips to 1 on Device A (transaction-safe)",
-            "Open Suggestions tab -> expand the per-factor 'why?' panel",
+            "Alice (Device A) creates a session called 'Friday Vibes'",
+            "Bob (Device B) joins using the six-character code Alice reads aloud",
+            "Both see the same live queue instantly — no refresh button",
+            "Alice adds 'Blinding Lights' by The Weeknd from Spotify",
+            "Bob upvotes it — the vote count updates on both screens in real time",
+            "Open the Suggestions tab to see the AI helper explain why it picked the next song",
         ],
         notes=(
             "Walk through the demo on the two emulators. Don't read the "
@@ -107,21 +107,17 @@ SLIDES: list[Slide] = [
     ),
     # 3 - Stack
     Slide(
-        title="Stack at a glance",
-        subtitle="What's wired, why it's wired",
+        title="What I built it with",
+        subtitle="Simple tools that just work together",
         body=[
-            {
-                "table": [
-                    ("Mobile", "Flutter 3.38 / Dart 3.10  -  single codebase, Material 3"),
-                    ("State", "Riverpod 3  -  compile-checked DI, auto-dispose"),
-                    ("Routing", "go_router 17  -  declarative + auth-aware redirect"),
-                    ("Identity", "firebase_auth  -  email + password"),
-                    ("Database", "cloud_firestore  -  real-time queue, votes, chat"),
-                    ("Files", "firebase_storage  -  avatars"),
-                    ("Push", "firebase_messaging  -  invites, vote rounds"),
-                    ("Server", "cloud_functions (Node 22 / TS)  -  Spotify bridge, secrets"),
-                ]
-            }
+            "Mobile app — Flutter (one codebase that works on Android phones)",
+            "Keeps everything in sync — Riverpod (modern state management)",
+            "Moving between screens — go_router (remembers if you're logged in)",
+            "Login and user accounts — Firebase Authentication (email + password)",
+            "Live shared playlist and chat — Cloud Firestore (updates appear instantly)",
+            "Profile pictures — Firebase Storage",
+            "Push notifications when friends vote or join — Firebase Cloud Messaging",
+            "Searching Spotify without exposing secrets — Cloud Functions (the secret stays on the server)",
         ],
         notes=(
             "All five required Firebase services are live, plus Cloud "
@@ -132,13 +128,17 @@ SLIDES: list[Slide] = [
     ),
     # 4 - Q1 build order
     Slide(
-        title="Build sequence: a staircase, not a pile",
-        subtitle="Q1  -  Implementation",
+        title="I built the hard parts in this order",
+        subtitle="Q1 — Implementation",
         body=[
-            "1.  Queue + voting   (auth + Firestore + transactions + rules together)",
-            "2.  Spotify Cloud Function   (server tier; queue already accepts any source)",
-            "3.  Recommendations + fairness   (consume what 1 + 2 produced)",
-            "Each layer had a tested predecessor before any new uncertainty was added",
+            "First: the shared playlist and voting system",
+            "   - This tested login, the database, and security rules all at once",
+            "Second: the Spotify search (through a Cloud Function on the server)",
+            "   - The playlist was already working, so I could test real songs safely",
+            "Third: the AI song suggestions and fairness ranking",
+            "   - These use the playlist data that was already solid",
+            "",
+            "Building this way meant each new feature had something that already worked underneath it.",
         ],
         notes=(
             "The three hardest features were the live queue with voting, "
@@ -156,17 +156,17 @@ SLIDES: list[Slide] = [
     ),
     # 5 - Architecture / navigation
     Slide(
-        title="Screen decomposition + auth-aware routing",
-        subtitle="Q4 + Q5  -  Architecture",
+        title="I kept each screen simple and easy to follow",
+        subtitle="Q4 + Q5 — Architecture",
         body=[
-            "SessionScreen (tab host)",
-            "    -  QueueTrackTile         (one row, owns vote state)",
-            "    -  SuggestionsCard        (AI helper, decoupled from queue)",
-            "    -  ChatScreen             (own route, survives backgrounding)",
-            "GoRouter with auth-aware redirect:",
-            "    -  signed-out + private route  -> /sign-in",
-            "    -  signed-in  + auth screen   -> /",
-            "    -  zero changes to add a new private route",
+            "The main session screen used to try to do everything at once (playlist, chat, suggestions)",
+            "I split it into smaller pieces that each have one job:",
+            "   • QueueTrackTile — shows one song and its vote buttons",
+            "   • SuggestionsCard — shows the AI's next-song ideas with explanations",
+            "   • ChatScreen — its own page so you can switch away and come back",
+            "",
+            "Navigation remembers whether you're logged in and sends you to the right place automatically.",
+            "Adding a new screen later is just one line of code.",
         ],
         notes=(
             "SessionScreen used to do everything itself - queue, chat, "
@@ -187,23 +187,18 @@ SLIDES: list[Slide] = [
     ),
     # 6 - Data model
     Slide(
-        title="Firestore data model",
-        subtitle="Q10  -  Firebase",
+        title="How the data is organized",
+        subtitle="Q10 — Firebase",
         body=[
-            {
-                "code": (
-                    "users/{uid}\n"
-                    "sessions/{sessionId}\n"
-                    "  |-- members/{uid}\n"
-                    "  |-- queue/{trackId}\n"
-                    "  |-- messages/{messageId}\n"
-                    "  +-- suggestions/{snapshotId}\n"
-                    "joinCodes/{code}      <-- public lookup (read-only mapping)"
-                )
-            },
-            "Subcollections under sessions: one rule call (isSessionMember) per request, not per doc",
-            "Riverpod listener teardown is automatic when navigating out of a session",
-            "joinCodes is deliberately top-level + public so non-members can resolve a code first",
+            "Three main collections:",
+            "   • users — profile pictures and preferences",
+            "   • sessions — the playlist room itself (title, owner, who is in it)",
+            "   • joinCodes — a simple lookup so friends can join with a 6-letter code",
+            "",
+            "Inside each session there are smaller lists:",
+            "   • members, queue (the songs), messages (chat), and suggestions (AI ideas)",
+            "",
+            "This structure makes the security rules simple and the screens fast — when you leave a session, everything cleans up automatically.",
         ],
         notes=(
             "Three top-level collections - users, sessions, joinCodes - and "
@@ -221,24 +216,16 @@ SLIDES: list[Slide] = [
     ),
     # 7 - Tech debt + isJoiningSelf
     Slide(
-        title="Join-by-code: the chicken-and-egg + the fix",
-        subtitle="Q14 + Q6  -  Reflection + Architecture",
+        title="The join-by-code problem (and how I fixed it)",
+        subtitle="Q14 + Q6 — Reflection + Architecture",
         body=[
-            "v1 (broken):  sessions where code == ?      requires read on entire collection",
-            "v2 (shipped): joinCodes/{code} -> sessionId   plus this rule:",
-            {
-                "code": (
-                    "function isJoiningSelf() {\n"
-                    "  return isSignedIn()\n"
-                    "    && !(request.auth.uid in resource.data.memberIds)\n"
-                    "    && request.auth.uid in request.resource.data.memberIds\n"
-                    "    && request.resource.data.diff(resource.data).affectedKeys()\n"
-                    "        .hasOnly(['memberIds', 'memberCount', 'updatedAt']);\n"
-                    "}"
-                )
-            },
-            "Strict whitelist: a non-member can ONLY add their own UID + bump counters",
-            "Pattern is now my default for any 'share-by-link' flow",
+            "Early version: to join you had to be able to see every session — that broke the privacy rules",
+            "Solution:",
+            "   1. A small public lookup table (joinCodes) that anyone logged in can read",
+            "   2. A special rule that lets a new person add ONLY themselves to the member list",
+            "",
+            "This pattern is now my go-to whenever I need a 'share this link' feature.",
+            "It was the hardest bug I fixed — see Bug 2 in the bug log.",
         ],
         notes=(
             "My biggest piece of technical debt came from Phase 2. The "
@@ -260,32 +247,15 @@ SLIDES: list[Slide] = [
     ),
     # 8 - Composite index
     Slide(
-        title="Composite index + read-cost trade-off",
-        subtitle="Q11  -  Firebase",
+        title="Making the home screen fast again",
+        subtitle="Q11 — Firebase",
         body=[
-            "The query (home screen 'sessions I'm in'):",
-            {
-                "code": (
-                    "_sessions\n"
-                    "    .where('memberIds', arrayContains: uid)\n"
-                    "    .orderBy('updatedAt', descending: true)\n"
-                    "    .snapshots();"
-                )
-            },
-            "The required composite index, declared in firestore.indexes.json:",
-            {
-                "code": (
-                    "{\n"
-                    "  \"collectionGroup\": \"sessions\",\n"
-                    "  \"fields\": [\n"
-                    "    { \"fieldPath\": \"memberIds\", \"arrayConfig\": \"CONTAINS\" },\n"
-                    "    { \"fieldPath\": \"updatedAt\", \"order\": \"DESCENDING\" }\n"
-                    "  ]\n"
-                    "}"
-                )
-            },
-            "Write-amplifying:  N members  ->  N index entries per updatedAt bump",
-            "50-member cap keeps every session well under Firestore's 40 KiB index budget",
+            "The home screen asks: 'show me all the sessions I'm part of, newest first'",
+            "That combination of filters needs a special index in the database",
+            "I added it to a file called firestore.indexes.json so it gets deployed automatically",
+            "",
+            "Without it the screen would spin forever. With it the list appears in under 200 milliseconds.",
+            "Same fix was needed for the playlist view once we started hiding played songs.",
         ],
         notes=(
             "Array-contains plus an orderBy on a different field requires a "
@@ -305,25 +275,14 @@ SLIDES: list[Slide] = [
     ),
     # 9 - Auth-scoped rule
     Slide(
-        title="Auth-scoped rule: users can only touch themselves",
-        subtitle="Q12  -  Firebase",
+        title="Only you can edit your own profile",
+        subtitle="Q12 — Firebase",
         body=[
-            {
-                "code": (
-                    "match /users/{uid} {\n"
-                    "  allow read:   if isSelf(uid);\n"
-                    "  allow create: if isSelf(uid);\n"
-                    "  allow update: if isSelf(uid);\n"
-                    "  allow delete: if false;\n"
-                    "}\n\n"
-                    "function isSelf(uid) {\n"
-                    "  return isSignedIn() && request.auth.uid == uid;\n"
-                    "}"
-                )
-            },
-            "Unauthenticated:  request.auth == null  -> isSignedIn() false  -> denied",
-            "Wrong UID:  request.auth.uid != uid  -> denied",
-            "Hard-off delete:  cleanup goes through a Cloud Function (Admin SDK bypasses rules)",
+            "The rule is simple: if the person asking is logged in as you, they can see and change your profile",
+            "If they're not logged in, or they're trying to look at someone else's profile, the request is blocked",
+            "Deleting profiles is turned off completely — that happens through a secure server process instead",
+            "",
+            "I tested this both in the Firebase console and with automated tests so I know it works.",
         ],
         notes=(
             "Every user can read or write only their own profile document. "
@@ -341,15 +300,15 @@ SLIDES: list[Slide] = [
     ),
     # 10 - FCM lifecycle
     Slide(
-        title="FCM token lifecycle",
-        subtitle="Q13  -  Firebase",
+        title="How push notifications work",
+        subtitle="Q13 — Firebase",
         body=[
-            "1.  Sign-in   -> requestPermission()",
-            "2.  getToken()  -> users/{uid}.fcmTokens (array, multi-device)",
-            "3.  onTokenRefresh -> arrayUnion(new) + arrayRemove(old)",
-            "4.  Foreground   -> SnackBar via active ScaffoldMessenger",
-            "5.  Background / terminated -> top-level vibzcheckFcmBackgroundHandler (registered before runApp)",
-            "6.  Sign-out -> arrayRemove old token (re-used device stops getting prior user's pushes)",
+            "When you sign in the app asks for permission to send notifications",
+            "It saves a unique token for your phone in your user profile",
+            "If you get a new phone or the token changes, it updates automatically",
+            "Notifications show up as a little message at the bottom of the screen when you're using the app",
+            "Even if the app is closed, the phone can still wake up and show the message",
+            "When you sign out, your token is removed so you stop getting the previous person's notifications",
         ],
         notes=(
             "FCM has the most state of any feature, so I gave it its own "
@@ -368,23 +327,23 @@ SLIDES: list[Slide] = [
     ),
     # 11 - Vote sync bug
     Slide(
-        title="Sync bug: voting twice didn't zero the score",
-        subtitle="Q3  -  Implementation (sync)",
+        title="Voting twice didn't zero the score (fixed with a transaction)",
+        subtitle="Q3 — Implementation (sync)",
         body=[
-            "Before (subtly wrong - real Firestore preserves null map entries):",
-            {"code": "votes[uid] = null;"},
-            "After (atomic, transaction-safe):",
+            "Early bug: tapping the upvote button twice looked correct on screen but the score stayed at 1 in the database",
+            "Root cause: clearing a vote with votes[uid] = null didn't actually remove the key in real Firestore",
+            "Fix (shown in code below): use FieldValue.delete() inside a transaction so the vote, score, and counters all update together atomically",
             {
                 "code": (
                     "if (effectiveVote == 0) {\n"
-                    "  updates['votes.\\$uid'] = FieldValue.delete();\n"
+                    "  updates['votes.$uid'] = FieldValue.delete();\n"
                     "} else {\n"
-                    "  updates['votes.\\$uid'] = effectiveVote;\n"
+                    "  updates['votes.$uid'] = effectiveVote;\n"
                     "}\n"
                     "tx.update(trackRef, updates);"
                 )
             },
-            "Pinned by the 'upvoting twice toggles the vote off' test in queue_repository_test.dart",
+            "This exact behavior is now locked in by a unit test so it can't regress.",
         ],
         notes=(
             "The most subtle bug I shipped and caught: tapping upvote twice "
@@ -400,23 +359,13 @@ SLIDES: list[Slide] = [
     ),
     # 12 - Failure case: Spotify fallback + add-track rework
     Slide(
-        title="Failure-case ownership: narrowed rethrow + mock fallback",
-        subtitle="Q7 + Q2  -  Testing + Implementation (rework)",
+        title="When the Spotify search fails, the app still works",
+        subtitle="Q7 + Q2 — Testing + Implementation (rework)",
         body=[
-            {
-                "code": (
-                    "} on FirebaseFunctionsException catch (e, stack) {\n"
-                    "  if (e.code == 'unauthenticated' ||\n"
-                    "      e.code == 'failed-precondition') {\n"
-                    "    rethrow;   // user / config errors fallback can't fix\n"
-                    "  }\n"
-                    "  return _fallback.search(query);  // mock catalogue\n"
-                    "}"
-                )
-            },
-            "Add-track screen reworked: no more auto-empty search on mount",
-            "Empty state now reads: 'Type a song, artist, or album to search Spotify.'",
-            "Saves a function invocation + Spotify quota every time the screen is opened",
+            "The app calls a Cloud Function to search Spotify (so the secret stays safe on the server)",
+            "If the function is down, rate-limited, or has any other problem, the app falls back to a small built-in list of songs instead of showing nothing",
+            "I also changed the Add Track screen so it no longer searches automatically when you open it — you have to type something first",
+            "This prevents wasting server calls and makes the experience feel faster",
         ],
         notes=(
             "The first version of my Spotify repository rethrew every "
@@ -435,20 +384,14 @@ SLIDES: list[Slide] = [
     ),
     # 13 - Auth error UX
     Slide(
-        title="Auth-error UX: account enumeration is a feature flag I left OFF",
-        subtitle="Q8  -  Testing",
+        title="Sign-in errors are friendly and safe",
+        subtitle="Q8 — Testing",
         body=[
-            {
-                "code": (
-                    "user-not-found      -+\n"
-                    "wrong-password      +-->  'Email or password is incorrect.'\n"
-                    "invalid-credential  -+"
-                )
-            },
-            "Three different Firebase codes deliberately collapsed into ONE line",
-            "Stops attackers from enumerating which emails have accounts",
-            "11 cases pinned in test/features/auth/auth_error_messages_test.dart",
-            "Future change to the switch is forced to ship with a paired test",
+            "Instead of showing scary technical messages like 'user-not-found' or 'wrong-password', the app shows one simple message:",
+            "'Email or password is incorrect.'",
+            "",
+            "This is deliberate — it stops someone from figuring out which email addresses have accounts in the system (a security best practice).",
+            "Every possible error is covered by 11 automated tests so the friendly message can never accidentally leak technical details.",
         ],
         notes=(
             "When sign-in fails, attackers must not be able to figure out "
@@ -464,22 +407,16 @@ SLIDES: list[Slide] = [
     ),
     # 14 - Performance under real use
     Slide(
-        title="Performance: profile the right side of the wire",
-        subtitle="Q9  -  Testing",
+        title="Performance: the home screen used to spin forever",
+        subtitle="Q9 — Testing",
         body=[
-            "Symptom: home-screen sessions list spun forever for both emulators",
-            {
-                "code": (
-                    "$ adb logcat | rg FAILED_PRECONDITION\n"
-                    "FAILED_PRECONDITION: The query requires an index.\n"
-                    "  You can create it here: https://console.firebase...\n\n"
-                    "(after index deploy)\n"
-                    "first emission resolved in 187 ms"
-                )
-            },
-            "Fix: composite index added to firestore.indexes.json (reproducible, in source)",
-            "Same playbook fixed an identical bug in the queue listener (Bug 4)",
-            "Takeaway: when a request leaves the device, look at the SERVER's logs first",
+            "After adding the join-by-code feature, the home screen would show a loading spinner and never finish",
+            "The phone logs told me exactly why: 'The query requires an index'",
+            "I added the missing index to a file called firestore.indexes.json and redeployed",
+            "The list now loads in under 200 milliseconds on both phones",
+            "The same fix was needed later for the playlist view once we started hiding already-played songs",
+            "",
+            "Lesson: when something is slow, look at the server logs first, not just the phone screen.",
         ],
         notes=(
             "The home screen sessions list spun forever for both emulators "
@@ -497,19 +434,18 @@ SLIDES: list[Slide] = [
     ),
     # 15 - AI helper + grad fairness
     Slide(
-        title="AI helper + graduate-level fairness ranker",
-        subtitle="Supports Q1  -  responsible AI angle",
+        title="The AI song suggester + fairness ranking",
+        subtitle="Graduate extension (supports Q1)",
         body=[
-            "TrackRecommender (rule-based, 100% explainable):",
-            "    -  Mood match against current session mood",
-            "    -  Genre overlap against members' favourites",
-            "    -  Variety penalty if same artist already dominates",
-            "    -  Recency penalty if track was played recently",
-            "FairnessRanker (graduate extension):",
-            "    -  Boost from quieter members' votes so they're not drowned out",
-            "    -  Penalty for tracks already played in this session",
-            "    -  Every re-rank ships with the factor it won on (UX 'why?' panel)",
-            "Tests: track_recommender_test.dart + fairness_ranker_test.dart",
+            "The app suggests the next three songs using simple rules instead of a black-box AI model:",
+            "   • Does it match the current mood of the room?",
+            "   • Does it fit with what people usually like?",
+            "   • Has the same artist played too much already?",
+            "   • Was this song played recently?",
+            "",
+            "A second 'fairness' step makes sure quieter people still get their songs played — it gives a small boost to tracks from members who haven't had many songs chosen yet.",
+            "Every suggestion shows a little 'why this one?' explanation so the group can see and trust the reasoning.",
+            "Both features are fully tested so they can't break silently.",
         ],
         notes=(
             "The AI must-solve helper is a transparent rule-based "
@@ -529,22 +465,14 @@ SLIDES: list[Slide] = [
     ),
     # 16 - Tests + evidence
     Slide(
-        title="Tests, bug log, and the submission bundle",
+        title="Everything you need to check my work",
         subtitle="Supports the rubric's Functionality & Testing slice",
         body=[
-            {
-                "code": (
-                    "$ flutter test\n"
-                    "00:05 +62: All tests passed!"
-                )
-            },
-            "Nine test files: auth errors, chat, fairness, recommender, mood, queue, session, Spotify, theme",
-            "submission/ ships:",
-            "    -  BUG_LOG.md             (six bugs, root-cause format)",
-            "    -  CURATED_QUESTIONS.md   (14 selected questions, full answers + cited code)",
-            "    -  Curated_Questions.docx (the rubric's questions-only doc)",
-            "    -  screenshots/           (baseline + capture guide for slide-ready shots)",
-            "    -  Vibzcheck-1.0.0-release.apk  (signed, 50.5 MB, sideload-ready)",
+            "62 automated tests all pass — including tests for voting, the AI suggestions, the fairness ranking, and the Spotify fallback",
+            "A bug log explains the six hardest problems I ran into and exactly how I fixed them",
+            "The full answer key with code references is in CURATED_QUESTIONS.md",
+            "A separate Word document with only the questions (as the rubric asks) is also included",
+            "Screenshots from both phones and a signed release APK are in the submission folder",
         ],
         notes=(
             "Sixty-two tests, all green: nine test files covering the "
@@ -560,15 +488,16 @@ SLIDES: list[Slide] = [
     ),
     # 17 - If I restarted tomorrow
     Slide(
-        title="If I restarted tomorrow",
-        subtitle="Supports Q14  -  Reflection",
+        title="If I started this project again from scratch",
+        subtitle="Q14 — Reflection",
         body=[
-            "1.  Bring firebase emulator-suite into the repo from day one",
-            "        -  security rule changes get unit-tested instead of caught at runtime",
-            "2.  Route every mutation through Cloud Functions (Admin SDK)",
-            "        -  client-side write rules collapse to 'never'",
-            "        -  rule file becomes a handful of read-only allows",
-            "        -  blast radius for any future schema mistake is much smaller",
+            "I would do two things differently from day one:",
+            "",
+            "1. Use the Firebase emulator tools right from the beginning so I could test security rules automatically instead of finding bugs only when two phones tried to join the same session",
+            "",
+            "2. Have every change to the database go through a Cloud Function instead of letting the phone write directly. That would make the security rules much simpler and reduce the chance of mistakes.",
+            "",
+            "These changes would have saved me the two biggest bugs I hit during the project.",
         ],
         notes=(
             "If I restarted tomorrow on the same Flutter and Firebase "
@@ -586,13 +515,14 @@ SLIDES: list[Slide] = [
     ),
     # 18 - Close
     Slide(
-        title="Thank you",
-        subtitle="Questions?",
+        title="Thank you — any questions?",
+        subtitle="",
         body=[
-            "Repo:  github.com/Tmaku18/vibzcheck-project2",
-            "APK:   submission/Vibzcheck-1.0.0-release.apk",
-            "Q&A pack: submission/CURATED_QUESTIONS.md",
-            "All five required Firebase services live, transparent AI, graduate fairness ranking",
+            "GitHub repo: github.com/Tmaku18/vibzcheck-project2",
+            "Signed APK is in the submission folder",
+            "Full answer key, bug log, and screenshots are all there too",
+            "",
+            "I built a complete, real-time collaborative music app that meets every requirement in the project brief, including the graduate-level fairness ranking and transparent AI suggestions.",
         ],
         notes=(
             "That's Vibzcheck. Solo build, all five required Firebase "
