@@ -61,6 +61,11 @@ class Slide:
     body: list[object]
     notes: str
     layout: str = "content"  # "title" for cover slide
+    # Phone screenshot(s) to dock on the right of the slide. May be a single
+    # path (relative to this file's parent) or a list for side-by-side
+    # multi-phone shots. When set, the body content area auto-shrinks so
+    # it doesn't collide with the image(s).
+    image: str | list[str] | None = None
 
 
 # --- Slide content (mirrors PRESENTATION_SCRIPT.md exactly) --------------
@@ -89,12 +94,16 @@ SLIDES: list[Slide] = [
         title="Live demo: two phones, one shared playlist",
         subtitle="Demo (Slide 2)",
         body=[
-            "Alice (Device A) creates a session called 'Friday Vibes'",
-            "Bob (Device B) joins using the six-character code Alice reads aloud",
-            "Both see the same live queue instantly — no refresh button",
-            "Alice adds 'Blinding Lights' by The Weeknd from Spotify",
-            "Bob upvotes it — the vote count updates on both screens in real time",
-            "Open the Suggestions tab to see the AI helper explain why it picked the next song",
+            "Alice creates a session called 'Friday Vibes'",
+            "Bob joins using the six-character code Alice reads aloud",
+            "Both see the same live queue instantly",
+            "Alice adds 'Blinding Lights' from Spotify",
+            "Bob upvotes — the count updates on both screens in real time",
+            "The AI suggests the next song and explains why",
+        ],
+        image=[
+            "screenshots/20_home_sessions.png",
+            "screenshots/30_session_with_queue.png",
         ],
         notes=(
             "Walk through the demo on the two emulators. Don't read the "
@@ -191,15 +200,15 @@ SLIDES: list[Slide] = [
         subtitle="Q10 — Firebase",
         body=[
             "Three main collections:",
-            "   • users — profile pictures and preferences",
-            "   • sessions — the playlist room itself (title, owner, who is in it)",
-            "   • joinCodes — a simple lookup so friends can join with a 6-letter code",
+            "   • users — profile and preferences",
+            "   • sessions — the playlist room itself",
+            "   • joinCodes — lookup so friends can join with a 6-letter code",
             "",
-            "Inside each session there are smaller lists:",
-            "   • members, queue (the songs), messages (chat), and suggestions (AI ideas)",
+            "Inside each session: members, queue (songs), messages (chat), suggestions (AI)",
             "",
-            "This structure makes the security rules simple and the screens fast — when you leave a session, everything cleans up automatically.",
+            "This makes security rules simple and screens fast — leaving cleans up automatically.",
         ],
+        image="screenshots/20_home_sessions.png",
         notes=(
             "Three top-level collections - users, sessions, joinCodes - and "
             "four subcollections under each session.\n\n"
@@ -219,14 +228,15 @@ SLIDES: list[Slide] = [
         title="The join-by-code problem (and how I fixed it)",
         subtitle="Q14 + Q6 — Reflection + Architecture",
         body=[
-            "Early version: to join you had to be able to see every session — that broke the privacy rules",
+            "Early version: to join you had to see every session — that broke privacy rules",
             "Solution:",
-            "   1. A small public lookup table (joinCodes) that anyone logged in can read",
-            "   2. A special rule that lets a new person add ONLY themselves to the member list",
+            "   1. A small public lookup table (joinCodes) anyone logged in can read",
+            "   2. A rule that lets a new person add ONLY themselves to the member list",
             "",
-            "This pattern is now my go-to whenever I need a 'share this link' feature.",
-            "It was the hardest bug I fixed — see Bug 2 in the bug log.",
+            "This pattern is now my go-to for any 'share this link' feature.",
+            "Hardest bug I fixed — see Bug 2 in the bug log.",
         ],
+        image="screenshots/30_session_with_queue.png",
         notes=(
             "My biggest piece of technical debt came from Phase 2. The "
             "original join-by-code flow was a single Firestore query - "
@@ -278,12 +288,13 @@ SLIDES: list[Slide] = [
         title="Only you can edit your own profile",
         subtitle="Q12 — Firebase",
         body=[
-            "The rule is simple: if the person asking is logged in as you, they can see and change your profile",
-            "If they're not logged in, or they're trying to look at someone else's profile, the request is blocked",
-            "Deleting profiles is turned off completely — that happens through a secure server process instead",
+            "Rule: if the person asking is logged in as you, they can read and change your profile",
+            "If they're not logged in, or they're looking at someone else's profile, the request is blocked",
+            "Deleting profiles is turned off completely — handled through a secure server process",
             "",
-            "I tested this both in the Firebase console and with automated tests so I know it works.",
+            "I tested this in the Firebase console and with automated tests so I know it works.",
         ],
+        image="screenshots/11_signup.png",
         notes=(
             "Every user can read or write only their own profile document. "
             "An unauthenticated request has request.auth equals null, so "
@@ -330,9 +341,9 @@ SLIDES: list[Slide] = [
         title="Voting twice didn't zero the score (fixed with a transaction)",
         subtitle="Q3 — Implementation (sync)",
         body=[
-            "Early bug: tapping the upvote button twice looked correct on screen but the score stayed at 1 in the database",
-            "Root cause: clearing a vote with votes[uid] = null didn't actually remove the key in real Firestore",
-            "Fix (shown in code below): use FieldValue.delete() inside a transaction so the vote, score, and counters all update together atomically",
+            "Early bug: tapping upvote twice looked correct but the score stayed at 1 in the database",
+            "Cause: clearing a vote with votes[uid] = null didn't remove the key in real Firestore",
+            "Fix: use FieldValue.delete() inside a transaction — vote, score, and counters update atomically",
             {
                 "code": (
                     "if (effectiveVote == 0) {\n"
@@ -343,8 +354,9 @@ SLIDES: list[Slide] = [
                     "tx.update(trackRef, updates);"
                 )
             },
-            "This exact behavior is now locked in by a unit test so it can't regress.",
+            "Locked in by a unit test so it can't regress.",
         ],
+        image="screenshots/30_session_with_queue.png",
         notes=(
             "The most subtle bug I shipped and caught: tapping upvote twice "
             "toggled the UI off but left voteScore equals 1 in Firestore. "
@@ -362,11 +374,12 @@ SLIDES: list[Slide] = [
         title="When the Spotify search fails, the app still works",
         subtitle="Q7 + Q2 — Testing + Implementation (rework)",
         body=[
-            "The app calls a Cloud Function to search Spotify (so the secret stays safe on the server)",
-            "If the function is down, rate-limited, or has any other problem, the app falls back to a small built-in list of songs instead of showing nothing",
-            "I also changed the Add Track screen so it no longer searches automatically when you open it — you have to type something first",
-            "This prevents wasting server calls and makes the experience feel faster",
+            "The app calls a Cloud Function to search Spotify (secret stays safe on the server)",
+            "If the function fails, the app falls back to a built-in list instead of showing nothing",
+            "Add Track no longer auto-searches when you open it — you type first",
+            "Saves server calls and feels faster",
         ],
+        image="screenshots/31_add_track_drake.png",
         notes=(
             "The first version of my Spotify repository rethrew every "
             "FirebaseFunctionsException, which meant a single Cloud Function "
@@ -387,12 +400,13 @@ SLIDES: list[Slide] = [
         title="Sign-in errors are friendly and safe",
         subtitle="Q8 — Testing",
         body=[
-            "Instead of showing scary technical messages like 'user-not-found' or 'wrong-password', the app shows one simple message:",
+            "Instead of technical messages like 'user-not-found' or 'wrong-password', the app shows one line:",
             "'Email or password is incorrect.'",
             "",
-            "This is deliberate — it stops someone from figuring out which email addresses have accounts in the system (a security best practice).",
-            "Every possible error is covered by 11 automated tests so the friendly message can never accidentally leak technical details.",
+            "Deliberate — it stops anyone from figuring out which emails have accounts (security best practice).",
+            "11 automated tests guarantee the friendly message can never leak technical details.",
         ],
+        image="screenshots/10_signin.png",
         notes=(
             "When sign-in fails, attackers must not be able to figure out "
             "which half of the credential pair was wrong - that would let "
@@ -437,16 +451,17 @@ SLIDES: list[Slide] = [
         title="The AI song suggester + fairness ranking",
         subtitle="Graduate extension (supports Q1)",
         body=[
-            "The app suggests the next three songs using simple rules instead of a black-box AI model:",
-            "   • Does it match the current mood of the room?",
-            "   • Does it fit with what people usually like?",
-            "   • Has the same artist played too much already?",
-            "   • Was this song played recently?",
+            "Suggests the next three songs using simple rules — no black-box AI:",
+            "   • Does it match the room's current mood?",
+            "   • Does it fit what people usually like?",
+            "   • Has the same artist played too much?",
+            "   • Was it played recently?",
             "",
-            "A second 'fairness' step makes sure quieter people still get their songs played — it gives a small boost to tracks from members who haven't had many songs chosen yet.",
-            "Every suggestion shows a little 'why this one?' explanation so the group can see and trust the reasoning.",
-            "Both features are fully tested so they can't break silently.",
+            "A 'fairness' step boosts songs from quieter members so they aren't drowned out.",
+            "Every pick shows its reasoning (see right) so the group can trust it.",
+            "Both fully tested so they can't break silently.",
         ],
+        image="screenshots/50_suggestions_with_why.png",
         notes=(
             "The AI must-solve helper is a transparent rule-based "
             "recommender. It scores tracks by mood match against the queue's "
@@ -624,16 +639,21 @@ def add_bullet_paragraph(tf, text: str, *, first: bool) -> None:
     p.space_after = Pt(6)
 
 
-def add_code_block(slide, code: str, top: Emu) -> Emu:
-    """Renders a fixed-pitch code block. Returns the new content top."""
+def add_code_block(slide, code: str, top: Emu, right: Emu = Inches(12.78)) -> Emu:
+    """Renders a fixed-pitch code block. Returns the new content top.
+
+    `right` is the x coordinate the block must not cross — used to leave
+    room for a docked phone screenshot on the right side of the slide.
+    """
     lines = code.splitlines() or [""]
     line_height = Pt(15.5)
     height = Emu(int(line_height * (len(lines) + 1.2)))
+    width = right - Inches(0.55)
     box = slide.shapes.add_shape(
         MSO_SHAPE.ROUNDED_RECTANGLE,
         Inches(0.55),
         top,
-        Inches(12.23),
+        width,
         height,
     )
     box.line.color.rgb = RULE
@@ -660,15 +680,18 @@ def add_code_block(slide, code: str, top: Emu) -> Emu:
     return top + height + Inches(0.15)
 
 
-def add_table_block(slide, rows: list[tuple[str, str]], top: Emu) -> Emu:
+def add_table_block(
+    slide, rows: list[tuple[str, str]], top: Emu, right: Emu = Inches(12.78)
+) -> Emu:
     n = len(rows)
     height = Inches(0.46) * n
-    table_shape = slide.shapes.add_table(
-        n, 2, Inches(0.55), top, Inches(12.23), height
-    )
+    width = right - Inches(0.55)
+    table_shape = slide.shapes.add_table(n, 2, Inches(0.55), top, width, height)
     table = table_shape.table
-    table.columns[0].width = Inches(2.4)
-    table.columns[1].width = Inches(9.83)
+    # Keep the label column proportional to the table width.
+    label_w = Inches(2.4)
+    table.columns[0].width = label_w
+    table.columns[1].width = width - label_w
     for r, (left, right) in enumerate(rows):
         for c, value in enumerate((left, right)):
             cell = table.cell(r, c)
@@ -689,11 +712,18 @@ def add_table_block(slide, rows: list[tuple[str, str]], top: Emu) -> Emu:
     return top + height + Inches(0.2)
 
 
-def add_body(slide, body: list[object], top: Emu) -> None:
+def add_body(
+    slide, body: list[object], top: Emu, right: Emu = Inches(12.78)
+) -> None:
     """Renders the slide body. Bullets land in one shared text frame so
     they keep tight vertical rhythm; code/table blocks open new shapes
-    after closing the previous bullet group."""
+    after closing the previous bullet group.
+
+    `right` is the x coordinate the body must not cross — narrower when
+    a phone screenshot is docked on the right side of the slide.
+    """
     bullet_buffer: list[str] = []
+    width = right - Inches(0.55)
 
     def flush_bullets(start: Emu) -> Emu:
         nonlocal bullet_buffer
@@ -701,9 +731,7 @@ def add_body(slide, body: list[object], top: Emu) -> None:
             return start
         line_height = Pt(26)
         height = Emu(int(line_height * (len(bullet_buffer) + 0.5)))
-        box = slide.shapes.add_textbox(
-            Inches(0.55), start, Inches(12.23), height
-        )
+        box = slide.shapes.add_textbox(Inches(0.55), start, width, height)
         tf = box.text_frame
         tf.word_wrap = True
         for i, line in enumerate(bullet_buffer):
@@ -718,10 +746,60 @@ def add_body(slide, body: list[object], top: Emu) -> None:
         else:
             cursor = flush_bullets(cursor)
             if "code" in block:
-                cursor = add_code_block(slide, block["code"], cursor)
+                cursor = add_code_block(slide, block["code"], cursor, right=right)
             elif "table" in block:
-                cursor = add_table_block(slide, block["table"], cursor)
+                cursor = add_table_block(slide, block["table"], cursor, right=right)
     flush_bullets(cursor)
+
+
+# Native size of the captured Android phone screenshots (385 x 814).
+PHONE_ASPECT = 814 / 385  # ~2.114
+
+
+def add_phone_image(slide, image_path: str, x: Emu, top: Emu, height: Emu):
+    """Drops a phone-aspect screenshot and returns its bounding box."""
+    width = Emu(int(height / PHONE_ASPECT))
+    pic = slide.shapes.add_picture(image_path, x, top, width=width, height=height)
+    return pic
+
+
+def render_images(slide, image_field, body_top: Emu) -> Emu:
+    """Docks one or two phone screenshots on the right side of the slide.
+
+    Returns the x coordinate the body content must stay left of (so text
+    and images never collide).
+    """
+    if image_field is None:
+        return Inches(12.78)
+
+    paths = image_field if isinstance(image_field, list) else [image_field]
+    base = Path(__file__).resolve().parent
+    full_paths = [str((base / p).resolve()) for p in paths]
+
+    # Available vertical room: from body_top to slide bottom minus margin.
+    avail_height = SLIDE_H - body_top - Inches(0.4)
+
+    if len(full_paths) == 1:
+        # Bigger single phone: cap at 5.0" tall.
+        h = min(avail_height, Inches(5.0))
+        w = Emu(int(h / PHONE_ASPECT))
+        gutter = Inches(0.2)
+        right_edge = Inches(12.78)
+        x = right_edge - w
+        add_phone_image(slide, full_paths[0], x, body_top, h)
+        return x - gutter
+
+    # Two phones side by side, slightly smaller so both fit.
+    h = min(avail_height, Inches(4.6))
+    w = Emu(int(h / PHONE_ASPECT))
+    inner_gap = Inches(0.2)
+    gutter = Inches(0.2)
+    right_edge = Inches(12.78)
+    x2 = right_edge - w
+    x1 = x2 - inner_gap - w
+    add_phone_image(slide, full_paths[1], x2, body_top, h)
+    add_phone_image(slide, full_paths[0], x1, body_top, h)
+    return x1 - gutter
 
 
 def render_title_slide(slide, spec: Slide) -> None:
@@ -757,7 +835,8 @@ def render_title_slide(slide, spec: Slide) -> None:
 
 def render_content_slide(slide, spec: Slide) -> None:
     body_top = add_title_block(slide, spec.title, spec.subtitle)
-    add_body(slide, spec.body, body_top)
+    body_right = render_images(slide, spec.image, body_top)
+    add_body(slide, spec.body, body_top, right=body_right)
 
 
 def attach_notes(slide, notes_text: str) -> None:
