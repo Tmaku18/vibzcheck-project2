@@ -184,15 +184,35 @@ class SessionRepository {
   Future<void> endSession(String sessionId) async {
     final snap = await _sessionRef(sessionId).get();
     final code = (snap.data() ?? const <String, dynamic>{})['code'] as String?;
+
+    // Probe the public mapping before adding it to the batch. Sessions
+    // created by older builds (pre-joinCodes) have no mapping doc, and
+    // Firestore evaluates `delete` on a non-existent doc against
+    // `resource = null` -- so the rule
+    // `resource.data.ownerId == request.auth.uid` returns false and the
+    // ENTIRE batch fails with PERMISSION_DENIED, leaving the owner unable
+    // to end their own session. Skipping the delete when there's nothing
+    // to delete keeps the operation idempotent on legacy data.
+    var joinCodeExists = false;
+    if (code != null && code.isNotEmpty) {
+      try {
+        final mapping = await _joinCodes.doc(code).get();
+        joinCodeExists = mapping.exists;
+      } on FirebaseException {
+        // joinCodes is signed-in-readable, so this should never throw in
+        // practice; if it does, fall through to the session-only update
+        // rather than blocking the user.
+        joinCodeExists = false;
+      }
+    }
+
     final batch = _firestore.batch()
       ..update(_sessionRef(sessionId), {
         'status': SessionStatus.ended.asString,
         'updatedAt': FieldValue.serverTimestamp(),
       });
-    // Drop the public code mapping so the same code can't be used to join
-    // an ended session. Keeps `joinCodes` from accumulating stale entries.
-    if (code != null && code.isNotEmpty) {
-      batch.delete(_joinCodes.doc(code));
+    if (joinCodeExists) {
+      batch.delete(_joinCodes.doc(code!));
     }
     await batch.commit();
   }

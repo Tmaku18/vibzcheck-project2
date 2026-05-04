@@ -128,9 +128,37 @@ can be inspected in `git log`.
 
 ---
 
+## Bug 7 — Owner could not end a legacy session
+
+- **Issue.** Tapping **End session** on a session whose `joinCodes/{code}`
+  mapping doc didn't exist surfaced
+  `[cloud_firestore/permission-denied] The caller does not have permission
+  to execute the specified operation.` in a SnackBar, leaving the owner
+  unable to close the room. `adb logcat` confirmed the failing operation
+  was `Write failed at joinCodes/6TY6SC: PERMISSION_DENIED`, **not** the
+  session update.
+- **Root cause.** `SessionRepository.endSession` always batched a
+  `joinCodes/{code}` delete alongside the session-status update. For
+  sessions created by an older build (before the joinCodes mapping was
+  introduced in Bug 2's fix), there is no mapping doc — and Firestore
+  evaluates `delete` rules against `resource = null` for missing
+  documents. The rule
+  `resource.data.ownerId == request.auth.uid` then resolves to false, the
+  delete is denied, and the entire atomic batch is rolled back.
+- **Fix.** `endSession` now reads the joinCodes mapping first and only
+  adds the delete to the batch when the doc actually exists. The
+  session-status flip is no longer coupled to a successful cleanup of
+  legacy data.
+- **Affected files.** `lib/features/session/data/session_repository.dart`,
+  `test/features/session/session_repository_test.dart` (new regression
+  test `still ends the session when the joinCodes mapping is missing`).
+- **Commit.** see history; landed alongside this entry.
+
+---
+
 ## Reflection
 
-The recurring pattern across bugs 2 → 4 → 5 → 6 was that **the failure
+The recurring pattern across bugs 2 → 4 → 5 → 6 → 7 was that **the failure
 surface was inside Firebase / Spotify infrastructure, not inside our Dart
 code**. Each one was caught quickly because the app was instrumented with:
 

@@ -181,6 +181,28 @@ void main() {
           reason:
               'ending a session must drop its joinCodes entry so the code cannot be reused');
     });
+
+    test('still ends the session when the joinCodes mapping is missing',
+        () async {
+      // Reproduces Bug 7: a session created by an older build (or whose
+      // joinCodes doc was wiped by an admin) used to crash endSession with
+      // PERMISSION_DENIED because the batch tried to delete a non-existent
+      // mapping. The repo must now skip the delete and still flip the
+      // session status.
+      final session = await repo.createSession(
+          ownerId: ownerId, ownerName: ownerName, title: 'Legacy');
+      // Manually delete the mapping to simulate a session that was created
+      // before the joinCodes feature shipped.
+      await firestore.collection('joinCodes').doc(session.code).delete();
+
+      await repo.endSession(session.id);
+
+      final after =
+          await firestore.collection('sessions').doc(session.id).get();
+      expect(after.data()!['status'], SessionStatus.ended.asString,
+          reason:
+              'a missing joinCodes mapping must not block the owner from ending the session');
+    });
   });
 
   group('watchSessionsForUser', () {
