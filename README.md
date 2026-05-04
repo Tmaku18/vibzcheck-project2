@@ -226,7 +226,9 @@ gitignored (course PDFs, internal planning artefacts), so all
 | [`submission/PRESENTATION_SCRIPT.md`](submission/PRESENTATION_SCRIPT.md) | Speaker script with timing budget and rehearsal checklist (the prose source the deck was generated from). |
 | [`submission/CURATED_QUESTIONS.md`](submission/CURATED_QUESTIONS.md) | The 14 curated questions with full answers, code citations, and commit hashes. |
 | [`submission/Makuvaza_Tanaka_Vibzcheck_Project2_Curated_Questions.docx`](submission/Makuvaza_Tanaka_Vibzcheck_Project2_Curated_Questions.docx) | The rubric-required *questions-only* Word document. Generated from `make_questions_only_doc.py`. |
+| [`submission/Makuvaza_Tanaka_Vibzcheck_Project2_Curated_Questions_Answers.docx`](submission/Makuvaza_Tanaka_Vibzcheck_Project2_Curated_Questions_Answers.docx) | The full answer key in Word format (questions + researched answers + code references). Generated from `make_qa_doc.py` reading `CURATED_QUESTIONS.md`. |
 | [`submission/BUG_LOG.md`](submission/BUG_LOG.md) | Diary of the six hardest bugs (issue → root cause → fix → files → commit). |
+| [`submission/Makuvaza_Tanaka_Vibzcheck_Project2_Bug_Log.docx`](submission/Makuvaza_Tanaka_Vibzcheck_Project2_Bug_Log.docx) | The bug log in Word format. Generated from `make_bug_log_doc.py` reading `BUG_LOG.md`. |
 | [`submission/screenshots/`](submission/screenshots/) | Demo screenshots from both emulators plus a `CAPTURE_GUIDE.md` for refreshing them. |
 | [`Makuvaza_Tanaka_Vibzcheck_Project2_Proposal.docx`](Makuvaza_Tanaka_Vibzcheck_Project2_Proposal.docx) | Phase 1 proposal (top-level). |
 | [`Makuvaza_Tanaka_Vibzcheck_Project2_Signed_Statement.pdf`](Makuvaza_Tanaka_Vibzcheck_Project2_Signed_Statement.pdf) | Signed academic-integrity commitment statement (top-level). |
@@ -237,6 +239,8 @@ Re-running the full quality bar before submission:
 flutter analyze
 flutter test
 python submission/make_questions_only_doc.py
+python submission/make_qa_doc.py
+python submission/make_bug_log_doc.py
 python submission/make_presentation_pptx.py
 flutter build apk --release
 Copy-Item build\app\outputs\flutter-apk\app-release.apk submission\Vibzcheck-1.0.0-release.apk -Force
