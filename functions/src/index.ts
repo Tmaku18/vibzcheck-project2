@@ -241,9 +241,14 @@ export const searchTracks = onCall(
         "Search query is too long (max 80 characters).",
       );
     }
+    // Spotify's /v1/search currently rejects `limit > 10` for the
+    // client-credentials scope on free Spotify Developer apps with a
+    // confusing `400 "Invalid limit"` error, even though their public
+    // docs still say 50. We cap server-side at 10 so any client request
+    // (legacy clients sending 15, manual curl tests, etc.) still works.
     const limitInput =
-      typeof data.limit === "number" ? Math.floor(data.limit) : 15;
-    const limit = Math.min(20, Math.max(1, limitInput));
+      typeof data.limit === "number" ? Math.floor(data.limit) : 10;
+    const limit = Math.min(10, Math.max(1, limitInput));
 
     const clientId = SPOTIFY_CLIENT_ID.value();
     const clientSecret = SPOTIFY_CLIENT_SECRET.value();

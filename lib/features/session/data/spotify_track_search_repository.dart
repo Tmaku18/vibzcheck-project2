@@ -34,7 +34,11 @@ class SpotifyTrackSearchRepository implements TrackSearchRepository {
         ),
       );
       final response = await callable.call<Map<String, dynamic>>(
-        {'q': query, 'limit': 15},
+        // Limit kept at 10: Spotify's `/v1/search` currently rejects higher
+        // values for client-credentials apps with a misleading
+        // `400 "Invalid limit"` error. The function clamps to 10 too as a
+        // defence-in-depth check.
+        {'q': query, 'limit': 10},
       );
       final raw = (response.data['results'] as List?) ?? const [];
       final parsed = <Track>[];
