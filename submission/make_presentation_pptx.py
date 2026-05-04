@@ -101,9 +101,12 @@ SLIDES: list[Slide] = [
             "Bob upvotes — the count updates on both screens in real time",
             "The AI suggests the next song and explains why",
         ],
+        # Two real captures of the SAME session from two different
+        # emulators — note the upvote count on E85 differs (1 on the host,
+        # 2 after the joiner upvotes), which is the realtime sync proof.
         image=[
-            "screenshots/20_home_sessions.png",
             "screenshots/30_session_with_queue.png",
+            "screenshots/40_session_device_b.png",
         ],
         notes=(
             "Walk through the demo on the two emulators. Don't read the "
@@ -168,15 +171,15 @@ SLIDES: list[Slide] = [
         title="I kept each screen simple and easy to follow",
         subtitle="Q4 + Q5 — Architecture",
         body=[
-            "The main session screen used to try to do everything at once (playlist, chat, suggestions)",
+            "The main session screen used to try to do everything at once",
             "I split it into smaller pieces that each have one job:",
             "   • QueueTrackTile — shows one song and its vote buttons",
-            "   • SuggestionsCard — shows the AI's next-song ideas with explanations",
-            "   • ChatScreen — its own page so you can switch away and come back",
+            "   • SuggestionsCard — shows the AI's next-song ideas",
+            "   • ChatScreen — its own page (right) so you can switch away and come back",
             "",
             "Navigation remembers whether you're logged in and sends you to the right place automatically.",
-            "Adding a new screen later is just one line of code.",
         ],
+        image="screenshots/60_chat.png",
         notes=(
             "SessionScreen used to do everything itself - queue, chat, "
             "suggestions, member roster - and it got too big to read in "
@@ -228,15 +231,18 @@ SLIDES: list[Slide] = [
         title="The join-by-code problem (and how I fixed it)",
         subtitle="Q14 + Q6 — Reflection + Architecture",
         body=[
+            "Host creates the room (left), shares a 6-character code; joiner types it (right)",
             "Early version: to join you had to see every session — that broke privacy rules",
             "Solution:",
             "   1. A small public lookup table (joinCodes) anyone logged in can read",
             "   2. A rule that lets a new person add ONLY themselves to the member list",
             "",
-            "This pattern is now my go-to for any 'share this link' feature.",
             "Hardest bug I fixed — see Bug 2 in the bug log.",
         ],
-        image="screenshots/30_session_with_queue.png",
+        image=[
+            "screenshots/21_create_session.png",
+            "screenshots/22_join_by_code.png",
+        ],
         notes=(
             "My biggest piece of technical debt came from Phase 2. The "
             "original join-by-code flow was a single Firestore query - "
@@ -262,11 +268,12 @@ SLIDES: list[Slide] = [
         body=[
             "The home screen asks: 'show me all the sessions I'm part of, newest first'",
             "That combination of filters needs a special index in the database",
-            "I added it to a file called firestore.indexes.json so it gets deployed automatically",
+            "I added it to firestore.indexes.json so it deploys automatically",
             "",
-            "Without it the screen would spin forever. With it the list appears in under 200 milliseconds.",
+            "Without it the screen spun forever. With it the list (right) appears in under 200 ms.",
             "Same fix was needed for the playlist view once we started hiding played songs.",
         ],
+        image="screenshots/20_home_sessions.png",
         notes=(
             "Array-contains plus an orderBy on a different field requires a "
             "composite index. The index lives in firestore.indexes.json so "
@@ -752,15 +759,27 @@ def add_body(
     flush_bullets(cursor)
 
 
-# Native size of the captured Android phone screenshots (385 x 814).
-PHONE_ASPECT = 814 / 385  # ~2.114
+def _png_dimensions(path: str) -> tuple[int, int]:
+    """Return the (width, height) of a PNG by reading its IHDR chunk."""
+    import struct
+
+    with open(path, "rb") as f:
+        f.read(16)
+        w, h = struct.unpack(">II", f.read(8))
+    return w, h
 
 
-def add_phone_image(slide, image_path: str, x: Emu, top: Emu, height: Emu):
-    """Drops a phone-aspect screenshot and returns its bounding box."""
-    width = Emu(int(height / PHONE_ASPECT))
-    pic = slide.shapes.add_picture(image_path, x, top, width=width, height=height)
-    return pic
+def add_phone_image(slide, image_path: str, x: Emu, top: Emu, height: Emu) -> Emu:
+    """Drops a screenshot at a fixed height; width preserves the file's
+    own aspect ratio (so the bare phone screenshots and the wider
+    'emulator window' captures both render undistorted).
+
+    Returns the rendered width.
+    """
+    w, h = _png_dimensions(image_path)
+    width = Emu(int(height * (w / h)))
+    slide.shapes.add_picture(image_path, x, top, width=width, height=height)
+    return width
 
 
 def render_images(slide, image_field, body_top: Emu) -> Emu:
@@ -778,25 +797,28 @@ def render_images(slide, image_field, body_top: Emu) -> Emu:
 
     # Available vertical room: from body_top to slide bottom minus margin.
     avail_height = SLIDE_H - body_top - Inches(0.4)
+    gutter = Inches(0.2)
+    right_edge = Inches(12.78)
 
     if len(full_paths) == 1:
-        # Bigger single phone: cap at 5.0" tall.
         h = min(avail_height, Inches(5.0))
-        w = Emu(int(h / PHONE_ASPECT))
-        gutter = Inches(0.2)
-        right_edge = Inches(12.78)
+        # Probe the image's true width so we know where its left edge lands.
+        iw, ih = _png_dimensions(full_paths[0])
+        w = Emu(int(h * (iw / ih)))
         x = right_edge - w
         add_phone_image(slide, full_paths[0], x, body_top, h)
         return x - gutter
 
-    # Two phones side by side, slightly smaller so both fit.
+    # Two side-by-side: both rendered at the same height (slightly
+    # smaller than the single-image case so both fit in the row).
     h = min(avail_height, Inches(4.6))
-    w = Emu(int(h / PHONE_ASPECT))
     inner_gap = Inches(0.2)
-    gutter = Inches(0.2)
-    right_edge = Inches(12.78)
-    x2 = right_edge - w
-    x1 = x2 - inner_gap - w
+    iw2, ih2 = _png_dimensions(full_paths[1])
+    iw1, ih1 = _png_dimensions(full_paths[0])
+    w2 = Emu(int(h * (iw2 / ih2)))
+    w1 = Emu(int(h * (iw1 / ih1)))
+    x2 = right_edge - w2
+    x1 = x2 - inner_gap - w1
     add_phone_image(slide, full_paths[1], x2, body_top, h)
     add_phone_image(slide, full_paths[0], x1, body_top, h)
     return x1 - gutter
